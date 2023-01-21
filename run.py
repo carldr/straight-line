@@ -194,32 +194,27 @@ coords = boundary_gdf.geometry[0].exterior.coords
 print( "{} coords in boundary".format( len( coords ) ) )
 
 #  For of those, find the closest node to each.
-nodes = ox.nearest_nodes( graph, [ coord[0] for coord in coords ], [ coord[1] for coord in coords ] )
+nodes, dists = ox.nearest_nodes( graph, [ coord[0] for coord in coords ], [ coord[1] for coord in coords ], return_dist = True )
 print( "{} nodes in boundary".format( len( nodes ) ) )
 
 boundary_nodes = []
 for i in range(len(nodes)):
-  boundary_coords = coords[ i ]
   street_node = nodes[ i ]
+  dist = dists[ i ]
 
   node_loc = graph.nodes[ street_node ]
   point = Point( node_loc[ "x" ], node_loc[ "y" ] )
 
   #  If the node is outside the boundary, we definitely want it
   if not point.within( boundary ):
+    print( "{}: outside boundary".format( i ) )
     boundary_nodes.append( street_node )
     continue
 
-  distance_to_boundary = ox.distance.great_circle_vec(
-    node_loc[ 'y' ],
-    node_loc[ 'x' ], 
-    boundary_coords[ 1 ],
-    boundary_coords[ 0 ]
-  )
-
-  if distance_to_boundary < 10.0: # Less than 10m?
+  if dist < 10.0: # Less than 10m?
     boundary_nodes.append( street_node )
 
+print( "{} nodes outside or near boundary".format( len( boundary_nodes ) ) )
 
 #  Get a unique list of nodes that are close to the boundary, this should be a lot fewer than the number of coords
 boundary_nodes = list( set( boundary_nodes ) )
@@ -227,7 +222,7 @@ boundary_nodes.sort()
 print( "{} unique nodes outside or near boundary".format( len( boundary_nodes ) ) )
 
 #  Find the minimum distance we're going to allow for candidate routes - a third of the diagonal of the map
-minimum_distance = ox.distance.great_circle_vec( north, west, south, east ) / 3.0
+minimum_distance = ox.distance.great_circle_vec( north, west, south, east ) / 10.0
 print( "Minimum permitted distance : {}m".format( minimum_distance ) )
 
 ##############################################################
@@ -243,8 +238,6 @@ for s_idx, start_node in enumerate( boundary_nodes ):
     if start_node == end_node or s_idx > e_idx:
       continue
 
-    a = a + 1
-
     # y = lat, x = long
     straight_line_distance = ox.distance.great_circle_vec(
       graph.nodes[ start_node ][ 'y' ],
@@ -252,11 +245,13 @@ for s_idx, start_node in enumerate( boundary_nodes ):
       graph.nodes[ end_node ][ 'y' ],
       graph.nodes[ end_node ][ 'x' ]
     )
-
+    
     if straight_line_distance < minimum_distance:
       continue
 
-    path = ox.shortest_path( graph, start_node, end_node, weight = "length" )
+    a = a + 1
+
+    path = ox.shortest_path( graph, start_node, end_node, weight = "length", cpus = None )
     if path:
       route_length = sum( ox.utils_graph.get_route_edge_attributes( graph, path, "length") )
 
@@ -278,8 +273,8 @@ for s_idx, start_node in enumerate( boundary_nodes ):
 
       paths.append( path )
 
-    if a >= 500:
-      draw_paths()
-      os._exit( 0 )
+    #if a >= 50:
+    #  draw_paths()
+    #  os._exit( 0 )
 
 draw_paths()
