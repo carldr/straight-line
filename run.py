@@ -15,9 +15,9 @@ ox.settings.log_console = True
 #relation = "R167060"
 #filename = "shropshire.png"
 
-relation = "R6795460"
-filename = "whitchurch.png"
-activity = "bike"
+#relation = "R6795460"
+#filename = "whitchurch.png"
+#activity = "bike"
 
 #relation = "R4581086"
 #filename = "shrewsbury.png"
@@ -26,9 +26,9 @@ activity = "bike"
 #filename = "manchester.png"
 #activity = "walk"
 
-#relation = "R1410720"
-#filename = "crewe.png"
-#activity = "walk"
+relation = "R1410720"
+filename = "crewe.png"
+activity = "walk"
 
 #relation = "R163183"
 #filename = "stoke.png"
@@ -258,6 +258,8 @@ straightest_path = None
 
 for s_idx, start_node in enumerate( boundary_nodes ):
   for e_idx, end_node in enumerate( boundary_nodes ):
+    ## TODO: Add edge attributes which measure how far an edge is from the ideal line, and use that attribute for routing.
+
     if start_node == end_node or s_idx > e_idx:
       continue
 
