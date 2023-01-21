@@ -1,10 +1,14 @@
+# Straight Line
+
+## Dependencies
+
 - `brew install miniconda`
 - `conda config --prepend channels conda-forge`
 - `conda create -n ox --strict-channel-priority osmnx`
 - `conda init zsh`
+- Open new terminal, `conda activate ox`
 
-Open new terminal
+## Running
 
-- `conda activate ox`
-- `python run.py`
-  - Takes a minute or so to download Shropshire
+- `python run.py 2> /dev/null && identify shropshire.png  && open shropshire.png`
+- `python run.py 2> /dev/null && identify whitchurch.png  && open whitchurch.png`
