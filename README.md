@@ -35,6 +35,7 @@ straight line planning across countryside like Geowizard does.
   path finds.
 - It's pretty slow when doing country or large-county/state sized regions.
 - Doesn't output a .gpx of the final route.
+- The code is messy due to the high level of experimenting going on.
 
 ## Missing
 
