@@ -17,7 +17,7 @@ ox.settings.log_console = True
 
 relation = "R6795460"
 filename = "whitchurch.png"
-activity = "all"
+activity = "bike"
 
 #relation = "R4581086"
 #filename = "shrewsbury.png"
@@ -206,6 +206,11 @@ graph = ox.graph_from_polygon(
   truncate_by_edge = True,
   retain_all = True
 )
+
+#  Get a strongly connected graph, see https://stackoverflow.com/questions/63690631/osmnx-shortest-path-how-to-skip-node-if-not-reachable-and-take-the-next-neares
+#  This fixes a number of nodes which otherwise couldn't be routed to/from
+#  TODO: Oh, I wonder if others are because they are one-way?
+graph = ox.utils_graph.get_largest_component( graph, strongly=True )
 
 #  Show how many coords we have in the boundary
 coords = boundary_gdf.geometry[0].exterior.coords
