@@ -15,16 +15,16 @@ ox.settings.log_console = True
 #relation = "R167060"
 #filename = "shropshire.png"
 
-#relation = "R6795460"
-#filename = "whitchurch.png"
-#activity = "walk"
+relation = "R6795460"
+filename = "whitchurch.png"
+activity = "all"
 
 #relation = "R4581086"
 #filename = "shrewsbury.png"
 
-relation = "R146656"
-filename = "manchester.png"
-activity = "walk"
+#relation = "R146656"
+#filename = "manchester.png"
+#activity = "walk"
 
 #relation = "R1410720"
 #filename = "crewe.png"
@@ -51,9 +51,9 @@ activity = "walk"
 #filename = "greater-london.png"
 #activity = "walk"
 
-relation = "R1625787"
-filename = "cardiff.png"
-activity = "walk"
+#filename = "cardiff.png"
+#relation = "R1625787"
+#activity = "walk"
 
 def draw_paths():
   print( "{} paths to draw".format( len( paths ) ) )
@@ -183,7 +183,7 @@ if type( gdf.geometry[0] ) == MultiPolygon:
       largest_poly_area = poly.area
       largest_poly = poly
 else:
-  largest_poly = gdf.geometry[0].exterior
+  largest_poly = gdf.geometry[0]
 
 #  Extract the boundary
 boundary = Polygon( list( largest_poly.exterior.coords ) )
