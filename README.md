@@ -29,6 +29,8 @@ straight line planning across countryside like Geowizard does.
 ## Current issues
 
 - Only tested on macOS.  It should work elsewhere, you'll need to change/remove the call to `os.system` at the end of `draw_paths` on other OSs.
+- It's not really finding the closest route to a single line, it's finding the shortest route between two notes, and then working out how
+  far from ideal that route is.  Really, we want to favour routes which stay close to the ideal straight line.
 - It assumes directions betweeen two nodes are bi-directional (which is probably fine for walking) and uses that to do half the number of
   path finds.
 - It's pretty slow when doing country or large-county/state sized regions.
