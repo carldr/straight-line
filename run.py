@@ -5,7 +5,7 @@ import matplotlib.patches as patches
 import osmnx as ox
 import networkx as nx
 from shapely import difference
-from shapely.geometry import Polygon, Point
+from shapely.geometry import MultiPolygon, Polygon, Point
 import geopandas as gpd
 
 ox.settings.use_cache = True
@@ -15,16 +15,16 @@ ox.settings.log_console = True
 #relation = "R167060"
 #filename = "shropshire.png"
 
-relation = "R6795460"
-filename = "whitchurch.png"
-activity = "walk"
+#relation = "R6795460"
+#filename = "whitchurch.png"
+#activity = "walk"
 
 #relation = "R4581086"
 #filename = "shrewsbury.png"
 
-#relation = "R146656"
-#filename = "manchester.png"
-#activity = "walk"
+relation = "R146656"
+filename = "manchester.png"
+activity = "walk"
 
 #relation = "R1410720"
 #filename = "crewe.png"
@@ -43,13 +43,17 @@ activity = "walk"
 #filename = "kazakhstan.png"
 #activity = "walk"
 
-relation = "R172987"
-filename = "liverpool.png"
-activity = "bike"
+#relation = "R172987"
+#filename = "liverpool.png"
+#activity = "bike"
 
 #relation = "R65606"
 #filename = "greater-london.png"
 #activity = "walk"
+
+relation = "R1625787"
+filename = "cardiff.png"
+activity = "walk"
 
 def draw_paths():
   print( "{} paths to draw".format( len( paths ) ) )
@@ -67,7 +71,7 @@ def draw_paths():
   ax.tick_params( which = "both", direction = "in" )
   _ = [s.set_visible(False) for s in ax.spines.values()]
 
-  #  Draw the boundary
+  #  Draw the boundary (we could draw the real boundary, before coastal erosion?)
   #
   patch = patches.PathPatch( Path( list( boundary_gdf.geometry[0].exterior.coords ) ), color = "black", lw = 0.5, fill = False )
   ax.add_patch( patch )
@@ -81,7 +85,8 @@ def draw_paths():
     close = False,
     edge_color = "black",
     edge_linewidth = 0.1,
-    node_size = 0
+    node_size = 1,
+    node_color = "black"
   )
 
   #  Draw the routes
@@ -135,7 +140,8 @@ def draw_paths():
       last_loc[ 'y' ] - first_loc[ 'y' ],
       linewidth = 0.4,
       width = 0.0001,
-      fill = False, color = "blue"
+      fill = False,
+      color = "blue"
     )
     ax.add_patch( patch )
 
@@ -168,8 +174,19 @@ def draw_paths():
 #  Get the GeoDataFrame
 gdf = ox.geocode_to_gdf( relation, by_osmid = True )
 
+#  Some relations have multiple areas, like Cardiff.  For now, we're juat interested in the largest one
+largest_poly = None
+largest_poly_area = None
+if type( gdf.geometry[0] ) == MultiPolygon:
+  for poly in list( gdf.geometry[0].geoms ):
+    if largest_poly_area == None or poly.area > largest_poly_area:
+      largest_poly_area = poly.area
+      largest_poly = poly
+else:
+  largest_poly = gdf.geometry[0].exterior
+
 #  Extract the boundary
-boundary = Polygon( list( gdf.geometry[0].exterior.coords ) )
+boundary = Polygon( list( largest_poly.exterior.coords ) )
 west, north, east, south = boundary.bounds
 
 #  Load the coastline
@@ -186,7 +203,8 @@ west, north, east, south = boundary.bounds
 graph = ox.graph_from_polygon(
   boundary,
   network_type = activity,
-  truncate_by_edge = True
+  truncate_by_edge = True,
+  retain_all = True
 )
 
 #  Show how many coords we have in the boundary
