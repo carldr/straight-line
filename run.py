@@ -9,17 +9,20 @@ from shapely.geometry import Polygon, Point
 ox.settings.use_cache = True
 ox.settings.log_console = True
 
-relation = "R167060"
-filename = "shropshire.png"
+#relation = "R167060"
+#filename = "shropshire.png"
 
-relation = "R6795460"
-filename = "whitchurch.png"
+#relation = "R6795460"
+#filename = "whitchurch.png"
 
-relation = "R4581086"
-filename = "shrewsbury.png"
+#relation = "R4581086"
+#filename = "shrewsbury.png"
 
-#relation = "R146656"
-#filename = "manchester.png"
+relation = "R146656"
+filename = "manchester.png"
+
+relation = "R1410720"
+filename = "crewe.png"
 
 
 def draw_paths():
@@ -80,6 +83,7 @@ def draw_paths():
       ax = ax,
       show = False,
       close = False,
+      color = "yellow",
       route_linewidth = 1,
       orig_dest_size = 5,
       dpi = 600
@@ -92,9 +96,9 @@ def draw_paths():
       ax = ax,
       show = False,
       close = False,
+      route_colors = "red",
       route_linewidths = 1,
       orig_dest_size = 5,
-      dpi = 600
     )
 
   #  Draw the straightest
@@ -109,7 +113,6 @@ def draw_paths():
       close = False,
       route_linewidth = 2,
       orig_dest_size = 20,
-      dpi = 600
     )
 
   #  Reset the bounds
@@ -118,7 +121,7 @@ def draw_paths():
   ax.set_xlim( west - 0.005, east + 0.005 )
   ax.set_ylim( north - 0.005, south + 0.005 )
 
-  fig.savefig( filename, dpi = 600 )
+  fig.savefig( filename, dpi = 1600 )
 
   os.system( "open {}".format( filename ) )
 
@@ -136,7 +139,7 @@ def draw_paths():
     print( "Crow : {}m".format( straight_line_distance ) )
 
 
-
+#################################################################
 
 #  Get the GeoDataFrame
 gdf = ox.geocode_to_gdf( relation, by_osmid = True )
@@ -162,23 +165,23 @@ print( "{} nodes in boundary".format( len( nodes ) ) )
 #  Get a unique list of nodes that are close to the boundary, this should be a lot fewer than the number of coords
 unique_nodes = list( set( nodes ) )
 unique_nodes.sort()
+print( "{} unique nodes near boundary".format( len( unique_nodes ) ) )
 
-print( "{} unique nodes in boundary".format( len( unique_nodes ) ) )
+#  Actually, we just need the nodes which are outside the boundary, since we want to start and end outside (this breaks on the coast!)
+outside_nodes = []
+for unique_node in unique_nodes:
+  node_loc = graph.nodes[ unique_node ]
+  point = Point( node_loc[ "x" ], node_loc[ "y" ] )
+  if not point.within( boundary ):
+    outside_nodes.append( unique_node )
+print( "{} nodes outside boundary".format( len( outside_nodes ) ) )
 
+#  Find the minimum distance we're going to allow for candidate routes - half the diagonal of the map
 west, north, east, south = boundary.bounds
-minimum_distance = ox.distance.great_circle_vec(
-  north,
-  west, 
-  south,
-  east
-) / 2.0
-
+minimum_distance = ox.distance.great_circle_vec( north, west, south, east ) / 2.0
 print( "Minimum permitted distance : {}m".format( minimum_distance ) )
 
-
-
-
-
+##############################################################
 
 a = 0
 paths = []
@@ -186,19 +189,13 @@ paths = []
 straightest_path_extra_length_percent = None
 straightest_path = None
 
-for s_idx, start_node in enumerate( unique_nodes ):
-  for e_idx, end_node in enumerate( unique_nodes ):
+for s_idx, start_node in enumerate( outside_nodes ):
+  for e_idx, end_node in enumerate( outside_nodes ):
     start_node_loc = graph.nodes[ start_node ]
     start_point = Point( start_node_loc[ "x" ], start_node_loc[ "y" ] )
 
     end_node_loc = graph.nodes[ end_node ]
     end_point = Point( end_node_loc[ "x" ], end_node_loc[ "y" ] )
-
-    if start_point.within( boundary ):
-      continue
-
-    if end_point.within( boundary ):
-      continue
 
     if start_node == end_node or s_idx > e_idx:
       continue
