@@ -40,6 +40,6 @@ straight line planning across countryside like Geowizard does.
 
 ## Example
 
-There are several .pngs in the repository, but here is one showing the straightest route when walking across Manchester.
+There are several .pngs in the repository, but here is one showing the straightest route when biking across Liverpool.
 
-![Straightest route walking across Manchester](walk-manchester.png)
+![Straightest route biking across Liverpool](bike-liverpool.png)
