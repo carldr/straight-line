@@ -1,5 +1,12 @@
 # Straight Line
 
+You may have seen Tom Davies aka Geowizard on YouTube, and his straight line adventures across Wales, Norway and Scotland, or perhaps 
+Alastair Stanley's YouTube videos of him straight lining London and Cardiff.
+
+This repository aims to give you a starting point when picking routes similar to Alastair's city straightlines.  It keeps to public
+byways (the exact set it adheres to depends on the activity you pick, walking or biking for instance.)  It won't really help with
+straight line planning across countryside like Geowizard does.
+
 ## Dependencies
 
 - `brew install miniconda`
@@ -23,6 +30,7 @@
 - It assumes directions betweeen two nodes are bi-directional (which is probably fine for walking) and uses that to do half the number of
   path finds.
 - It's pretty slow when doing country or large-county/state sized regions.
+- Doesn't output a .gpx of the final route.
 
 ## Missing
 
