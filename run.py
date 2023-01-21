@@ -86,22 +86,6 @@ def draw_paths():
     node_size = 0
   )
 
-  #for path in paths:
-  #  first_loc = graph.nodes[ path[0] ]
-  #  last_loc = graph.nodes[ path[-1] ]
-  #
-  #  patch = patches.Arrow(
-  #    first_loc[ 'x' ],
-  #    first_loc[ 'y' ],
-  #    last_loc[ 'x' ] - first_loc[ 'x' ],
-  #    last_loc[ 'y' ] - first_loc[ 'y' ],
-  #    linewidth = 0.4,
-  #    width = 0.0005,
-  #    fill = False, color = "blue"
-  #  )
-  #  ax.add_patch( patch )
-
-
   #  Draw the routes
   #
   if len( paths ) == 1:
@@ -142,6 +126,20 @@ def draw_paths():
       route_linewidth = 2,
       orig_dest_size = 20,
     )
+
+    first_loc = graph.nodes[ straightest_path[0] ]
+    last_loc = graph.nodes[ straightest_path[-1] ]
+  
+    patch = patches.Arrow(
+      first_loc[ 'x' ],
+      first_loc[ 'y' ],
+      last_loc[ 'x' ] - first_loc[ 'x' ],
+      last_loc[ 'y' ] - first_loc[ 'y' ],
+      linewidth = 0.4,
+      width = 0.0001,
+      fill = False, color = "blue"
+    )
+    ax.add_patch( patch )
 
   #  Reset the bounds
   #
