@@ -4,7 +4,9 @@ from matplotlib.path import Path
 import matplotlib.patches as patches
 import osmnx as ox
 import networkx as nx
+from shapely import difference
 from shapely.geometry import Polygon, Point
+import geopandas as gpd
 
 ox.settings.use_cache = True
 ox.settings.log_console = True
@@ -13,15 +15,16 @@ ox.settings.log_console = True
 #relation = "R167060"
 #filename = "shropshire.png"
 
-#relation = "R6795460"
-#filename = "whitchurch.png"
+relation = "R6795460"
+filename = "whitchurch.png"
+activity = "walk"
 
 #relation = "R4581086"
 #filename = "shrewsbury.png"
 
-relation = "R146656"
-filename = "manchester.png"
-activity = "walk"
+#relation = "R146656"
+#filename = "manchester.png"
+#activity = "walk"
 
 #relation = "R1410720"
 #filename = "crewe.png"
@@ -40,18 +43,13 @@ activity = "walk"
 #filename = "kazakhstan.png"
 #activity = "walk"
 
-#relation = "R172987"
-#filename = "liverpool.png"
-#activity = "bike"
+relation = "R172987"
+filename = "liverpool.png"
+activity = "bike"
 
-
-
-#   Get coast of the country/continent
-#   Intersect that with the boundary
-#   Find points which are outside the boundary, or within, say, 10m of it.
-
-
-
+#relation = "R65606"
+#filename = "greater-london.png"
+#activity = "walk"
 
 def draw_paths():
   print( "{} paths to draw".format( len( paths ) ) )
@@ -71,7 +69,7 @@ def draw_paths():
 
   #  Draw the boundary
   #
-  patch = patches.PathPatch( Path( list( gdf.geometry[0].exterior.coords ) ), color = "black", lw = 0.5, fill = False )
+  patch = patches.PathPatch( Path( list( boundary_gdf.geometry[0].exterior.coords ) ), color = "black", lw = 0.5, fill = False )
   ax.add_patch( patch )
 
   #  Draw the roads
@@ -172,38 +170,63 @@ gdf = ox.geocode_to_gdf( relation, by_osmid = True )
 
 #  Extract the boundary
 boundary = Polygon( list( gdf.geometry[0].exterior.coords ) )
+west, north, east, south = boundary.bounds
+
+#  Load the coastline
+coastlines = gpd.read_file( 'water-polygons-split-4326/water_polygons.shp', bbox=( west, north, east, south ) )
+for i in range( len( coastlines ) ):
+  water = coastlines.loc[ i, 'geometry' ]
+
+  boundary = difference( boundary, water )
+
+boundary_gdf = gpd.GeoDataFrame( index=[0], crs='epsg:4326', geometry=[ boundary ] )
+west, north, east, south = boundary.bounds
 
 #  Build a graph of cycleable routes, "all_private", "all", "bike", "drive", "drive_service", "walk"
 graph = ox.graph_from_polygon(
   boundary,
   network_type = activity,
   truncate_by_edge = True
-)  
+)
 
 #  Show how many coords we have in the boundary
-coords = gdf.geometry[0].exterior.coords
+coords = boundary_gdf.geometry[0].exterior.coords
 print( "{} coords in boundary".format( len( coords ) ) )
 
 #  For of those, find the closest node to each.
 nodes = ox.nearest_nodes( graph, [ coord[0] for coord in coords ], [ coord[1] for coord in coords ] )
 print( "{} nodes in boundary".format( len( nodes ) ) )
 
-#  Get a unique list of nodes that are close to the boundary, this should be a lot fewer than the number of coords
-unique_nodes = list( set( nodes ) )
-unique_nodes.sort()
-print( "{} unique nodes near boundary".format( len( unique_nodes ) ) )
+boundary_nodes = []
+for i in range(len(nodes)):
+  boundary_coords = coords[ i ]
+  street_node = nodes[ i ]
 
-#  Actually, we just need the nodes which are outside the boundary, since we want to start and end outside (this breaks on the coast!)
-outside_nodes = []
-for unique_node in unique_nodes:
-  node_loc = graph.nodes[ unique_node ]
+  node_loc = graph.nodes[ street_node ]
   point = Point( node_loc[ "x" ], node_loc[ "y" ] )
+
+  #  If the node is outside the boundary, we definitely want it
   if not point.within( boundary ):
-    outside_nodes.append( unique_node )
-print( "{} nodes outside boundary".format( len( outside_nodes ) ) )
+    boundary_nodes.append( street_node )
+    continue
+
+  distance_to_boundary = ox.distance.great_circle_vec(
+    node_loc[ 'y' ],
+    node_loc[ 'x' ], 
+    boundary_coords[ 1 ],
+    boundary_coords[ 0 ]
+  )
+
+  if distance_to_boundary < 10.0: # Less than 10m?
+    boundary_nodes.append( street_node )
+
+
+#  Get a unique list of nodes that are close to the boundary, this should be a lot fewer than the number of coords
+boundary_nodes = list( set( boundary_nodes ) )
+boundary_nodes.sort()
+print( "{} unique nodes outside or near boundary".format( len( boundary_nodes ) ) )
 
 #  Find the minimum distance we're going to allow for candidate routes - a third of the diagonal of the map
-west, north, east, south = boundary.bounds
 minimum_distance = ox.distance.great_circle_vec( north, west, south, east ) / 3.0
 print( "Minimum permitted distance : {}m".format( minimum_distance ) )
 
@@ -215,14 +238,8 @@ paths = []
 straightest_path_extra_length_percent = None
 straightest_path = None
 
-for s_idx, start_node in enumerate( outside_nodes ):
-  for e_idx, end_node in enumerate( outside_nodes ):
-    start_node_loc = graph.nodes[ start_node ]
-    start_point = Point( start_node_loc[ "x" ], start_node_loc[ "y" ] )
-
-    end_node_loc = graph.nodes[ end_node ]
-    end_point = Point( end_node_loc[ "x" ], end_node_loc[ "y" ] )
-
+for s_idx, start_node in enumerate( boundary_nodes ):
+  for e_idx, end_node in enumerate( boundary_nodes ):
     if start_node == end_node or s_idx > e_idx:
       continue
 
@@ -261,7 +278,7 @@ for s_idx, start_node in enumerate( outside_nodes ):
 
       paths.append( path )
 
-    if a == 120000:
+    if a >= 500:
       draw_paths()
       os._exit( 0 )
 
