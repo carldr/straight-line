@@ -22,6 +22,7 @@
   boundary is water.
 - It assumes directions betweeen two nodes are bi-directional (which is probably fine for walking) and uses that to do half the number of
   path finds.
+- It's pretty slow when doing country or large-county/state sized regions.
 
 ## Missing
 
