@@ -9,6 +9,7 @@ from shapely.geometry import Polygon, Point
 ox.settings.use_cache = True
 ox.settings.log_console = True
 
+
 #relation = "R167060"
 #filename = "shropshire.png"
 
@@ -20,9 +21,36 @@ ox.settings.log_console = True
 
 relation = "R146656"
 filename = "manchester.png"
+activity = "walk"
 
-relation = "R1410720"
-filename = "crewe.png"
+#relation = "R1410720"
+#filename = "crewe.png"
+#activity = "walk"
+
+#relation = "R163183"
+#filename = "stoke.png"
+
+#relation = "R42602"
+#filename = "florence.png"
+
+#relation = "R51701"
+#filename = "switzerland.png"
+
+#relation = "R214665"
+#filename = "kazakhstan.png"
+#activity = "walk"
+
+#relation = "R172987"
+#filename = "liverpool.png"
+#activity = "bike"
+
+
+
+#   Get coast of the country/continent
+#   Intersect that with the boundary
+#   Find points which are outside the boundary, or within, say, 10m of it.
+
+
 
 
 def draw_paths():
@@ -121,9 +149,9 @@ def draw_paths():
   ax.set_xlim( west - 0.005, east + 0.005 )
   ax.set_ylim( north - 0.005, south + 0.005 )
 
-  fig.savefig( filename, dpi = 1600 )
+  fig.savefig( activity + "-" + filename, dpi = 1600 )
 
-  os.system( "open {}".format( filename ) )
+  os.system( "open {}".format( activity + "-" + filename ) )
 
   if straightest_path:
     route_length = sum( ox.utils_graph.get_route_edge_attributes( graph, straightest_path, "length") )
@@ -150,7 +178,7 @@ boundary = Polygon( list( gdf.geometry[0].exterior.coords ) )
 #  Build a graph of cycleable routes, "all_private", "all", "bike", "drive", "drive_service", "walk"
 graph = ox.graph_from_polygon(
   boundary,
-  network_type = "bike",
+  network_type = activity,
   truncate_by_edge = True
 )  
 
@@ -176,9 +204,9 @@ for unique_node in unique_nodes:
     outside_nodes.append( unique_node )
 print( "{} nodes outside boundary".format( len( outside_nodes ) ) )
 
-#  Find the minimum distance we're going to allow for candidate routes - half the diagonal of the map
+#  Find the minimum distance we're going to allow for candidate routes - a third of the diagonal of the map
 west, north, east, south = boundary.bounds
-minimum_distance = ox.distance.great_circle_vec( north, west, south, east ) / 2.0
+minimum_distance = ox.distance.great_circle_vec( north, west, south, east ) / 3.0
 print( "Minimum permitted distance : {}m".format( minimum_distance ) )
 
 ##############################################################
