@@ -1,11 +1,12 @@
 import os
+import random
 import matplotlib.pyplot as plt
 from matplotlib.path import Path
 import matplotlib.patches as patches
 import osmnx as ox
 import networkx as nx
-from shapely import difference
-from shapely.geometry import MultiPolygon, Polygon, Point
+from shapely import difference, distance
+from shapely.geometry import MultiPolygon, Polygon, Point, LineString
 import geopandas as gpd
 
 ox.settings.use_cache = True
@@ -19,16 +20,17 @@ ox.settings.log_console = True
 #filename = "whitchurch.png"
 #activity = "bike"
 
-#relation = "R4581086"
-#filename = "shrewsbury.png"
+relation = "R4581086"
+filename = "shrewsbury.png"
+activity = "walk"
 
 #relation = "R146656"
 #filename = "manchester.png"
 #activity = "walk"
 
-relation = "R1410720"
-filename = "crewe.png"
-activity = "walk"
+#relation = "R1410720"
+#filename = "crewe.png"
+#activity = "walk"
 
 #relation = "R163183"
 #filename = "stoke.png"
@@ -54,6 +56,46 @@ activity = "walk"
 #filename = "cardiff.png"
 #relation = "R1625787"
 #activity = "walk"
+
+def add_edge_distances( graph, start_node, end_node ):
+  first_loc = graph.nodes[ start_node ]
+  last_loc = graph.nodes[ end_node ]
+  line = LineString( [ Point( first_loc[ "x" ], last_loc[ "y" ] ), Point( last_loc[ "x" ], last_loc[ "y" ] ) ] )
+
+  dists = {}
+
+  for edge in graph.edges( keys = True ):
+    edge_line = LineString( [ Point( graph.nodes[ edge[0] ][ 'x' ], graph.nodes[ edge[0] ][ 'y' ] ), Point( graph.nodes[ edge[1] ][ 'x' ], graph.nodes[ edge[1] ][ 'y' ] ) ] )
+
+    #  Split the edge into 5m segments, and work out how far each is from the ideal.  Summing that amount
+    #  gives a measure of how good or bad an edge is in total.
+    dist = 0.0
+    for point in ox.utils_geo.interpolate_points( edge_line, 5.0 ):
+      #straight_line_distance = ox.distance.great_circle_vec(
+      #  graph.nodes[ straightest_path[0] ][ 'y' ],
+      #  graph.nodes[ straightest_path[0] ][ 'x' ], 
+      #  graph.nodes[ straightest_path[-1] ][ 'y' ],
+      #  graph.nodes[ straightest_path[-1] ][ 'x' ]
+      #)
+
+      #  This is using the units of lat/long, so the answer isn't in metres.
+      #  The distances are so small we don't need to do the great circle distance
+      #  We just can't take these numbers and use them to work out the largest deviation
+      #  We could work out the real metre ditances when we draw the map though.
+      point_dist = distance( line, Point( point[0], point[1] ) )
+      if point_dist < 0.0:
+        print( "Distance less than 0" )
+        os._exit( 1 )
+
+      dist += point_dist
+
+    # midpoint = edge_line.interpolate( 0.5, normalized = True )
+    #dists[ edge ] = distance( line, midpoint )
+
+    dists[ edge ] = dist
+
+  nx.set_edge_attributes( graph, dists, name = "from_ideal" )
+
 
 def draw_paths():
   print( "{} paths to draw".format( len( paths ) ) )
@@ -121,6 +163,17 @@ def draw_paths():
   if straightest_path:
     fig, ax = ox.plot_graph_route(
       graph,
+      shortest_path,
+      ax = ax,
+      route_color = "orange",
+      show = False,
+      close = False,
+      route_linewidth = 2,
+      orig_dest_size = 20,
+    )
+
+    fig, ax = ox.plot_graph_route(
+      graph,
       straightest_path,
       ax = ax,
       route_color = "green",
@@ -156,18 +209,18 @@ def draw_paths():
   os.system( "open {}".format( activity + "-" + filename ) )
 
   if straightest_path:
-    route_length = sum( ox.utils_graph.get_route_edge_attributes( graph, straightest_path, "length") )
-    straight_line_distance = ox.distance.great_circle_vec(
-      graph.nodes[ straightest_path[0] ][ 'y' ],
-      graph.nodes[ straightest_path[0] ][ 'x' ], 
-      graph.nodes[ straightest_path[-1] ][ 'y' ],
-      graph.nodes[ straightest_path[-1] ][ 'x' ]
-    )
+    # route_length = sum( ox.utils_graph.get_route_edge_attributes( graph, straightest_path, "from_ideal") )
+    #straight_line_distance = ox.distance.great_circle_vec(
+    #  graph.nodes[ straightest_path[0] ][ 'y' ],
+    #  graph.nodes[ straightest_path[0] ][ 'x' ], 
+    #  graph.nodes[ straightest_path[-1] ][ 'y' ],
+    #  graph.nodes[ straightest_path[-1] ][ 'x' ]
+    #)
 
-    print( "BEST : {}%% off perfect".format( straightest_path_extra_length_percent ) )
-    print( "Route : {}m".format( route_length ) )
-    print( "Crow : {}m".format( straight_line_distance ) )
-
+    print()
+    print( "Straightest path route length : {}".format( straight_path_route_length ) )
+    print( "Straightest path variation : {}".format( straightest_path_variation ) )
+    print( "Shortest path route length : {}".format( shortest_path_route_length ) )
 
 #################################################################
 
@@ -234,7 +287,7 @@ for i in range(len(nodes)):
     boundary_nodes.append( street_node )
     continue
 
-  if dist < 10.0: # Less than 10m?
+  if dist < 5.0: # Less than 5m?
     boundary_nodes.append( street_node )
 
 print( "{} nodes outside or near boundary".format( len( boundary_nodes ) ) )
@@ -245,7 +298,7 @@ boundary_nodes.sort()
 print( "{} unique nodes outside or near boundary".format( len( boundary_nodes ) ) )
 
 #  Find the minimum distance we're going to allow for candidate routes - a third of the diagonal of the map
-minimum_distance = ox.distance.great_circle_vec( north, west, south, east ) / 10.0
+minimum_distance = ox.distance.great_circle_vec( north, west, south, east ) / 3.0
 print( "Minimum permitted distance : {}m".format( minimum_distance ) )
 
 ##############################################################
@@ -253,15 +306,20 @@ print( "Minimum permitted distance : {}m".format( minimum_distance ) )
 a = 0
 paths = []
 
-straightest_path_extra_length_percent = None
+straightest_path_route_length = None
+straightest_path_variation = None
 straightest_path = None
+shortest_path = None
+shortest_path_route_length = None
+
+
 
 for s_idx, start_node in enumerate( boundary_nodes ):
   for e_idx, end_node in enumerate( boundary_nodes ):
-    ## TODO: Add edge attributes which measure how far an edge is from the ideal line, and use that attribute for routing.
-
     if start_node == end_node or s_idx > e_idx:
       continue
+
+    print( "{} to {}".format( start_node, end_node ) )
 
     # y = lat, x = long
     straight_line_distance = ox.distance.great_circle_vec(
@@ -272,31 +330,47 @@ for s_idx, start_node in enumerate( boundary_nodes ):
     )
     
     if straight_line_distance < minimum_distance:
+      print( "      Great circle distance below minimum" )
       continue
 
     a = a + 1
 
-    path = ox.shortest_path( graph, start_node, end_node, weight = "length", cpus = None )
-    if path:
-      route_length = sum( ox.utils_graph.get_route_edge_attributes( graph, path, "length") )
+    #path = list( ox.k_shortest_paths( graph, start_node, end_node, 100, weight = "from_ideal" ) )
+    short_path = ox.shortest_path( graph, start_node, end_node, weight = "length" )
+    if short_path:
+      #path = path[0]
+      short_path_route_length = sum( ox.utils_graph.get_route_edge_attributes( graph, short_path, "length") )
 
-      difference = ( route_length - straight_line_distance )
-      percentage = ( route_length - straight_line_distance ) / route_length * 100.0
+      print( "      route_length: {}, straight line distance: {}".format( short_path_route_length, straight_line_distance ) )
 
-      print(
-        "{} to {} = straight: {}, length: {} = {}m, {}%".format(
-          start_node, end_node,
-          straight_line_distance, route_length,
-          difference, percentage
-         )
-      )
+      if short_path_route_length > straight_line_distance * 1.3:
+        print( "      SKIP > 30%" )
+        continue
 
-      if straightest_path == None or percentage < straightest_path_extra_length_percent:
+      if ( straightest_path != None and short_path_route_length > shortest_path_route_length * 1.3 ): 
+        print( "      SKIP: Shortest path 30% over current best shortest route length" )
+        continue
+
+      ## TODO: Add edge attributes which measure how far an edge is from the ideal line, and use that attribute for routing.
+      ##       It's slow.
+      add_edge_distances( graph, start_node, end_node )
+
+      straight_path = ox.shortest_path( graph, start_node, end_node, weight = "from_ideal" )
+      variation = sum( ox.utils_graph.get_route_edge_attributes( graph, straight_path, "from_ideal" ) )
+      straight_path_route_length = sum( ox.utils_graph.get_route_edge_attributes( graph, straight_path, "length" ) )
+
+      print( "      variation {} over {}".format( variation, straight_path_route_length ) )
+
+      # Variation per route length
+      if straightest_path == None or variation / short_path_route_length < straightest_path_variation / short_path_route_length:
         print( "  BEST YET!" )
-        straightest_path = path
-        straightest_path_extra_length_percent = percentage
+        shortest_path = short_path
+        shortest_path_route_length = short_path_route_length
+        straightest_path = straight_path
+        straightest_path_variation = variation
+        straightest_path_route_length = straight_path_route_length
 
-      paths.append( path )
+      paths.append( straight_path )
 
     #if a >= 50:
     #  draw_paths()
