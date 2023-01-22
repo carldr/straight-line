@@ -133,7 +133,9 @@ def draw_paths( graph, boundary, boundary_gdf, paths, filename ):
 
   #  Draw the routes
   #
-  for path in paths:
+  for idx, path in enumerate( paths ):
+    print( "Drawing path {}/{}".format( idx+1, len( paths ) ) )
+
     fig, ax = ox.plot_graph_route(
       graph,
       path[ "path" ],
