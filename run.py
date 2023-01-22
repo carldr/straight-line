@@ -3,6 +3,7 @@ import osmnx as ox
 import networkx as nx
 from shapely import distance
 from shapely.geometry import Point, LineString
+import multiprocessing
 
 ox.settings.use_cache = True
 ox.settings.log_console = True
@@ -12,13 +13,13 @@ import straightline
 #relation = "R167060"
 #filename = "shropshire.png"
 
-#relation = "R6795460"
-#filename = "whitchurch.png"
-#activity = "bike"
+relation = "R6795460"
+filename = "whitchurch.png"
+activity = "bike"
 
-relation = "R4581086"
-filename = "shrewsbury.png"
-activity = "walk"
+#relation = "R4581086"
+#filename = "shrewsbury.png"
+#activity = "walk"
 
 #relation = "R146656"
 #filename = "manchester.png"
@@ -104,17 +105,16 @@ def add_edge_distances( graph, start_node, end_node ):
 
 ##############################################################
 
-a = 0
 paths = []
-
-straightest_path_route_length = None
 straightest_path_variation = None
 straightest_path = None
-shortest_path = None
-shortest_path_route_length = None
 
 
-for s_idx, start_node in enumerate( boundary_nodes ):
+def do_start_node( start_node, boundary_nodes ):
+  paths = []
+  straightest_path_variation = None
+  straightest_path = None
+
   for e_idx, end_node in enumerate( boundary_nodes ):
     if start_node == end_node or s_idx > e_idx:
       continue
@@ -133,21 +133,8 @@ for s_idx, start_node in enumerate( boundary_nodes ):
       print( "  Great circle distance below minimum" )
       continue
 
-    a = a + 1
-
-
-
-    """
-    straight_line = LineString( [ Point( 0,0 ), Point( 10,0 ) ] )
-    point = Point(6,1)
-    print( point.hausdorff_distance( straight_line ) )
-    print( straight_line.project( point ) )
-    print( straight_line.interpolate( straight_line.project( point ) ) )
-    os._exit( 1 )
-    """
-
     #short_path = ox.shortest_path( graph, start_node, end_node, weight = "length" )
-    for short_path in ox.k_shortest_paths( graph, start_node, end_node, 10, weight = "length" ):
+    for short_path in ox.k_shortest_paths( graph, start_node, end_node, 3, weight = "length" ):
       #if short_path:
       straight_line = LineString( [ Point( graph.nodes[ start_node ][ 'x' ], graph.nodes[ start_node ][ 'y' ] ), Point( graph.nodes[ end_node ][ 'x' ], graph.nodes[ end_node ][ 'y' ] ) ] )
 
@@ -158,7 +145,7 @@ for s_idx, start_node in enumerate( boundary_nodes ):
       path_linestring = LineString( points )
 
       absolute_max_dist = 0.0
-      for point in ox.utils_geo.interpolate_points( path_linestring, 0.00001 ): #  Remember this isn't metres, 0.00001 ~ 1.1m
+      for point in ox.utils_geo.interpolate_points( path_linestring, 0.00005 ): #  Remember this isn't metres, 0.00001 ~ 1.1m
         point = Point( point[0], point[1] )
         nearest_point_on_straight_line = straight_line.interpolate( straight_line.project( point ) )
         dist = nearest_point_on_straight_line.distance( point ) #  Could use the great circle
@@ -175,6 +162,24 @@ for s_idx, start_node in enumerate( boundary_nodes ):
 
       else:
         paths.append( { "path" : short_path, "width" : 0.3, "colour" : "red" } )
+
+  return paths, straightest_path, straightest_path_variation
+
+
+for s_idx, start_node in enumerate( boundary_nodes ):
+  s_paths, s_straightest_path, s_path_variation = do_start_node( start_node, boundary_nodes )
+
+  for s_path in s_paths:
+    paths.append( s_path )
+
+  if s_straightest_path == None:
+    continue
+
+  if straightest_path_variation == None or s_path_variation < straightest_path_variation:
+    straightest_path = s_straightest_path
+    straightest_path_variation = s_path_variation
+
+
 
 paths.append( { "path" : straightest_path, "colour" : "green", "width" : 1.0, "line" : True } )
 
