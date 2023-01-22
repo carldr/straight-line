@@ -1,3 +1,4 @@
+from time import sleep
 import sys
 import os
 import osmnx as ox
@@ -10,6 +11,43 @@ ox.settings.use_cache = True
 ox.settings.log_console = True
 
 import straightline
+
+def do_node( graph, start_node, end_node, count = 10 ):
+  this_end_node_straight_path = None
+  this_end_node_variation = None
+  
+  paths = []
+
+  #short_path = ox.shortest_path( graph, start_node, end_node, weight = "length" )
+  for short_path in ox.k_shortest_paths( graph, start_node, end_node, count, weight = "length" ):
+    #if short_path:
+    straight_line = LineString( [ Point( graph.nodes[ start_node ][ 'x' ], graph.nodes[ start_node ][ 'y' ] ), Point( graph.nodes[ end_node ][ 'x' ], graph.nodes[ end_node ][ 'y' ] ) ] )
+
+    # Turn path into linestring.
+    points = []
+    for node in short_path:
+      points.append( Point( graph.nodes[ node ][ 'x' ], graph.nodes[ node ][ 'y' ] ) )
+    path_linestring = LineString( points )
+
+    absolute_max_dist = 0.0
+    for point in ox.utils_geo.interpolate_points( path_linestring, 0.00005 ): #  Remember this isn't metres, 0.00001 ~ 1.1m
+      point = Point( point[0], point[1] )
+      nearest_point_on_straight_line = straight_line.interpolate( straight_line.project( point ) )
+      dist = nearest_point_on_straight_line.distance( point ) #  Could use the great circle
+
+      if dist > absolute_max_dist:
+        absolute_max_dist = dist
+        
+    print( "  Worst distance : {}".format( absolute_max_dist ) )
+
+    if this_end_node_straight_path == None or absolute_max_dist < this_end_node_variation:
+      print( "BEST THIS NODE" )
+      this_end_node_straight_path = short_path
+      this_end_node_variation = absolute_max_dist
+
+    paths.append( short_path )
+
+  return this_end_node_straight_path, this_end_node_variation, paths
 
 def do_start_node( deets ):
   graph, s_idx, start_node, minimum_distance, boundary_nodes = deets
@@ -36,35 +74,16 @@ def do_start_node( deets ):
       print( "  Great circle distance below minimum" )
       continue
 
-    #short_path = ox.shortest_path( graph, start_node, end_node, weight = "length" )
-    for short_path in ox.k_shortest_paths( graph, start_node, end_node, 3, weight = "length" ):
-      #if short_path:
-      straight_line = LineString( [ Point( graph.nodes[ start_node ][ 'x' ], graph.nodes[ start_node ][ 'y' ] ), Point( graph.nodes[ end_node ][ 'x' ], graph.nodes[ end_node ][ 'y' ] ) ] )
+    this_end_node_straight_path, this_end_node_variation, _ = do_node( graph, start_node, end_node )
+    if this_end_node_straight_path == None:
+      continue
 
-      # Turn path into linestring.
-      points = []
-      for node in short_path:
-        points.append( Point( graph.nodes[ node ][ 'x' ], graph.nodes[ node ][ 'y' ] ) )
-      path_linestring = LineString( points )
+    if straightest_path == None or this_end_node_variation < straightest_path_variation:
+      print( "  BEST" )
+      straightest_path = this_end_node_straight_path
+      straightest_path_variation = this_end_node_variation
 
-      absolute_max_dist = 0.0
-      for point in ox.utils_geo.interpolate_points( path_linestring, 0.00005 ): #  Remember this isn't metres, 0.00001 ~ 1.1m
-        point = Point( point[0], point[1] )
-        nearest_point_on_straight_line = straight_line.interpolate( straight_line.project( point ) )
-        dist = nearest_point_on_straight_line.distance( point ) #  Could use the great circle
-
-        if dist > absolute_max_dist:
-          absolute_max_dist = dist
-          
-      print( "  Worst distance : {}".format( absolute_max_dist ) )
-
-      if straightest_path == None or absolute_max_dist < straightest_path_variation:
-        print( "  BEST" )
-        straightest_path = short_path
-        straightest_path_variation = absolute_max_dist
-
-      else:
-        paths.append( { "path" : short_path, "width" : 0.3, "colour" : "red" } )
+    paths.append( { "path" : this_end_node_straight_path, "width" : 0.3, "colour" : "red" } )
 
   return { "paths" : paths, "straightest_path" : straightest_path, "straightest_path_variation" : straightest_path_variation }
 
@@ -73,13 +92,13 @@ def main( argv ):
   #relation = "R167060"
   #filename = "shropshire.png"
 
-  #relation = "R6795460"
-  #filename = "whitchurch.png"
-  #activity = "bike"
+  relation = "R6795460"
+  filename = "whitchurch.png"
+  activity = "bike"
 
-  relation = "R4581086"
-  filename = "shrewsbury.png"
-  activity = "walk"
+  #relation = "R4581086"
+  #filename = "shrewsbury.png"
+  #activity = "walk"
 
   #relation = "R146656"
   #filename = "manchester.png"
@@ -193,6 +212,14 @@ def main( argv ):
     if straightest_path_variation == None or s_path_variation < straightest_path_variation:
       straightest_path = s_straightest_path
       straightest_path_variation = s_path_variation
+
+  sleep( 2 )
+
+  print( "Doing the best 100 routes for the best found so far" )
+  straightest_path, straightest_path_variation, these_paths = do_node( graph, straightest_path[0], straightest_path[-1], 100 )
+
+  for path in these_paths:
+    paths.append( { "path" : path, "width" : 0.2, "colour" : "orange" } )
 
   paths.append( { "path" : straightest_path, "colour" : "green", "width" : 1.0, "line" : True } )
 
