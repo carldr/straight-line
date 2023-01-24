@@ -12,7 +12,7 @@ ox.settings.log_console = True
 
 import straightline
 
-def do_node( graph, start_node, end_node, count = 10 ):
+def do_node( graph, start_node, end_node, count = 3 ):
   this_end_node_straight_path = None
   this_end_node_variation = None
   this_end_node_route_length = None
@@ -169,11 +169,11 @@ def main( argv ):
 
   #relation = "R172987"
   #filename = "liverpool.png"
-  #activity = "bike"
-
-  #relation = "R65606"
-  #filename = "greater-london.png"
   #activity = "walk"
+
+  relation = "R65606"
+  filename = "greater-london.png"
+  activity = "walk"
 
   #filename = "cardiff.png"
   #relation = "R1625787"
@@ -265,12 +265,12 @@ def main( argv ):
       straightest_path_variation = s_path_variation
       straightest_path_length = s_path_length
 
-  print( "Doing the best 500 routes for the best found so far" )
+  print( "Doing the best 1000 routes for the best found so far" )
   straightest_path, straightest_path_variation, straight_path_route_length, these_paths, additional_path = do_node(
     graph,
     straightest_path[0],
     straightest_path[-1],
-    500
+    1000
   )
 
   for path in these_paths:
