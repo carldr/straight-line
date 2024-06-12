@@ -12,7 +12,7 @@ ox.settings.log_console = True
 
 import straightline
 
-def do_node( graph, start_node, end_node, count = 3 ):
+def do_node( graph, s_idx, start_node, end_node, count = 3 ):
   this_end_node_straight_path = None
   this_end_node_variation = None
   this_end_node_route_length = None
@@ -45,10 +45,10 @@ def do_node( graph, start_node, end_node, count = 3 ):
 
     route_length = sum( ox.utils_graph.get_route_edge_attributes( graph, short_path, "length" ) )
 
-    print( "  Worst variation : {}, distance : {}m".format( absolute_max_dist, route_length ) )
+    print( "Route {}, Worst variation : {}, distance : {}m".format( s_idx, absolute_max_dist, route_length ) )
 
     if this_end_node_straight_path == None or absolute_max_dist < this_end_node_variation:
-      print( "BEST THIS NODE" )
+      print( "Route {}, BEST THIS NODE".format( s_idx ) )
       this_end_node_straight_path = short_path
       this_end_node_variation = absolute_max_dist
       this_end_node_route_length = route_length
@@ -73,9 +73,9 @@ def do_node( graph, start_node, end_node, count = 3 ):
       continue
 
     if lengths[ i ] < this_end_node_route_length:
-      print( "BEST THIS NODE ON LENGTH" )
-      print( "Old: variation = {}, length = {}".format( this_end_node_variation, this_end_node_route_length ) )
-      print( "New: variation = {}, length = {}".format( variations[ i ], lengths[ i ] ) )
+      print( "Route {}, BEST THIS NODE ON LENGTH".format( s_idx ) )
+      print( "Route {}, Old: variation = {}, length = {}".format( s_idx, this_end_node_variation, this_end_node_route_length ) )
+      print( "Route {}, New: variation = {}, length = {}".format( s_idx, variations[ i ], lengths[ i ] ) )
 
       additional_path = this_end_node_straight_path
 
@@ -91,6 +91,8 @@ def do_node( graph, start_node, end_node, count = 3 ):
 def do_start_node( deets ):
   graph, s_idx, start_node, minimum_distance, boundary_nodes = deets
 
+  print( "Route {}/{}".format(  s_idx, len( boundary_nodes ) ) )
+
   paths = []
   straightest_path_route_length = None
   straightest_path_variation = None
@@ -100,7 +102,7 @@ def do_start_node( deets ):
     if start_node == end_node or s_idx > e_idx:
       continue
 
-    print( "{} to {}".format( start_node, end_node ) )
+    print( "Route {}, {} to {}".format( s_idx, start_node, end_node ) )
 
     # y = lat, x = long
     straight_line_distance = ox.distance.great_circle_vec(
@@ -111,15 +113,15 @@ def do_start_node( deets ):
     )
     
     if straight_line_distance < minimum_distance:
-      print( "  Great circle distance below minimum" )
+      print( "Route {}, Great circle distance below minimum".format( s_idx ) )
       continue
 
-    this_end_node_straight_path, this_end_node_variation, this_end_node_route_length, _, _ = do_node( graph, start_node, end_node )
+    this_end_node_straight_path, this_end_node_variation, this_end_node_route_length, _, _ = do_node( graph, s_idx, start_node, end_node )
     if this_end_node_straight_path == None:
       continue
 
     if straightest_path == None or this_end_node_variation < straightest_path_variation:
-      print( "  BEST" )
+      print( "Route {}, BEST".format( s_idx ) )
       straightest_path = this_end_node_straight_path
       straightest_path_variation = this_end_node_variation
       straightest_path_route_length = this_end_node_route_length
@@ -135,16 +137,21 @@ def do_start_node( deets ):
 
 
 def main( argv ):
-  #relation = "R167060"
-  #filename = "shropshire.png"
-
-  relation = "R6795460"
-  filename = "whitchurch.png"
+  relation = "R167060"
+  filename = "shropshire.png"
   activity = "bike"
 
-  relation = "R4581086"
-  filename = "shrewsbury.png"
-  activity = "walk"
+  #relation = "R58437"
+  #filename = "wales.png"
+  #activity = "bike"
+
+  #relation = "R6795460"
+  #filename = "whitchurch.png"
+  #activity = "bike"
+
+  #relation = "R4581086"
+  #filename = "shrewsbury.png"
+  #activity = "walk"
 
   #relation = "R146656"
   #filename = "manchester.png"
@@ -171,9 +178,9 @@ def main( argv ):
   #filename = "liverpool.png"
   #activity = "walk"
 
-  relation = "R65606"
-  filename = "greater-london.png"
-  activity = "walk"
+  #relation = "R65606"
+  #filename = "greater-london.png"
+  #activity = "walk"
 
   #filename = "cardiff.png"
   #relation = "R1625787"
@@ -232,7 +239,7 @@ def main( argv ):
 
 
 
-  pool = multiprocessing.Pool( processes = 16 )
+  pool = multiprocessing.Pool( processes = 8 )
   jobs = []
   for s_idx, start_node in enumerate( boundary_nodes ):
     jobs.append( ( graph, s_idx, start_node, minimum_distance, boundary_nodes ) )
@@ -260,14 +267,15 @@ def main( argv ):
       continue
 
     if straightest_path_variation == None or s_path_variation < straightest_path_variation:
-      print( "RET BEST" )
+      print( "Route {}, RET BEST".format( s_idx ) )
       straightest_path = s_straightest_path
       straightest_path_variation = s_path_variation
       straightest_path_length = s_path_length
 
-  print( "Doing the best 1000 routes for the best found so far" )
+  print( "Route {}, Doing the best 1000 routes for the best found so far".format( s_idx ) )
   straightest_path, straightest_path_variation, straight_path_route_length, these_paths, additional_path = do_node(
     graph,
+    s_idx,
     straightest_path[0],
     straightest_path[-1],
     1000

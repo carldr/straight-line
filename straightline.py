@@ -50,7 +50,7 @@ def setup( relation, activity ):
   graph = ox.utils_graph.get_largest_component( graph, strongly=True )
 
   #  Show how many coords we have in the boundary
-  coords = boundary_gdf.geometry[0].exterior.coords
+  coords = largest_poly.exterior.coords
   print( "{} coords in boundary".format( len( coords ) ) )
 
   #  For of those, find the closest node to each.
@@ -67,7 +67,7 @@ def setup( relation, activity ):
 
     #  If the node is outside the boundary, we definitely want it
     if not point.within( boundary ):
-      print( "{}: outside boundary".format( i ) )
+      print( "{}: outside boundary (checking {} nodes)".format( i, len(nodes) ) )
       boundary_nodes.append( street_node )
       continue
 
@@ -81,8 +81,8 @@ def setup( relation, activity ):
   boundary_nodes.sort()
   print( "{} unique nodes outside or near boundary".format( len( boundary_nodes ) ) )
 
-  #  Find the minimum distance we're going to allow for candidate routes - a third of the diagonal of the map
-  minimum_distance = ox.distance.great_circle_vec( north, west, south, east ) / 3.0
+  #  Find the minimum distance we're going to allow for candidate routes - a quarter of the diagonal of the map
+  minimum_distance = ox.distance.great_circle_vec( north, west, south, east ) / 4.0
   print( "Minimum permitted distance : {}m".format( minimum_distance ) )
 
 
