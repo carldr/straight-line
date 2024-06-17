@@ -171,7 +171,7 @@ def draw_paths( graph, boundary, boundary_gdf, paths, filename ):
   ax.set_xlim( west - 0.005, east + 0.005 )
   ax.set_ylim( north - 0.005, south + 0.005 )
 
-  fig.savefig( filename, dpi = 1600 )
+  fig.savefig( filename, dpi = 2000 )
 
   print( "Opening " + filename )
   os.system( "open {}".format( filename ) )

@@ -72,7 +72,7 @@ def do_node( graph, s_idx, start_node, end_node, count = 3 ):
     if this_end_node_variation - variations[i] > 0.000001:
       continue
 
-    if lengths[ i ] > this_end_node_route_length:
+    if lengths[ i ] < this_end_node_route_length:
       print( "Route {}, BEST THIS NODE ON LENGTH, picking longer path".format( s_idx ) )
       print( "Route {}, Old: variation = {}, length = {}".format( s_idx, this_end_node_variation, this_end_node_route_length ) )
       print( "Route {}, New: variation = {}, length = {}".format( s_idx, variations[ i ], lengths[ i ] ) )
@@ -145,9 +145,9 @@ def main( argv ):
   #filename = "wales.png"
   #activity = "bike"
 
-  relation = "R6795460"
-  filename = "whitchurch.png"
-  activity = "bike"
+  #relation = "R6795460"
+  #filename = "whitchurch.png"
+  #activity = "bike"
 
   #relation = "R4581086"
   #filename = "shrewsbury.png"
@@ -188,49 +188,6 @@ def main( argv ):
 
   graph, boundary_nodes, minimum_distance, boundary, boundary_gdf = straightline.setup( relation, activity )
 
-
-  """
-  def add_edge_distances( graph, start_node, end_node ):
-    first_loc = graph.nodes[ start_node ]
-    last_loc = graph.nodes[ end_node ]
-    line = LineString( [ Point( first_loc[ "x" ], last_loc[ "y" ] ), Point( last_loc[ "x" ], last_loc[ "y" ] ) ] )
-
-    dists = {}
-
-    for edge in graph.edges( keys = True ):
-      edge_line = LineString( [ Point( graph.nodes[ edge[0] ][ 'x' ], graph.nodes[ edge[0] ][ 'y' ] ), Point( graph.nodes[ edge[1] ][ 'x' ], graph.nodes[ edge[1] ][ 'y' ] ) ] )
-
-      #  Split the edge into 5m segments, and work out how far each is from the ideal.  Summing that amount
-      #  gives a measure of how good or bad an edge is in total.
-      dist = 0.0
-      for point in ox.utils_geo.interpolate_points( edge_line, 5.0 ):
-        #straight_line_distance = ox.distance.great_circle_vec(
-        #  graph.nodes[ straightest_path[0] ][ 'y' ],
-        #  graph.nodes[ straightest_path[0] ][ 'x' ], 
-        #  graph.nodes[ straightest_path[-1] ][ 'y' ],
-        #  graph.nodes[ straightest_path[-1] ][ 'x' ]
-        #)
-
-        #  This is using the units of lat/long, so the answer isn't in metres.
-        #  The distances are so small we don't need to do the great circle distance
-        #  We just can't take these numbers and use them to work out the largest deviation
-        #  We could work out the real metre ditances when we draw the map though.
-        point_dist = distance( line, Point( point[0], point[1] ) )
-        if point_dist < 0.0:
-          print( "Distance less than 0" )
-          os._exit( 1 )
-
-        dist += point_dist
-
-      # midpoint = edge_line.interpolate( 0.5, normalized = True )
-      #dists[ edge ] = distance( line, midpoint )
-
-      dists[ edge ] = dist
-
-    nx.set_edge_attributes( graph, dists, name = "from_ideal" )
-  """
-
-
   #################################################################
 
 
@@ -266,21 +223,23 @@ def main( argv ):
     if s_straightest_path == None:
       continue
 
-    if straightest_path_variation == None or s_path_variation < straightest_path_variation:
-      print( "Route {}, RET BEST".format( s_idx ) )
+    #  We work out the variation in coordination with the path length, so this favours straighter longer paths
+    if straightest_path_variation == None or s_path_length * s_path_variation < straightest_path_variation:
+      print( "Route {}, RET BEST, path {}km, var {}".format( s_idx, s_path_length, s_path_variation ) )
       straightest_path = s_straightest_path
       straightest_path_variation = s_path_variation
       straightest_path_length = s_path_length
 
-  print( "Route {}, Doing the best 1000 routes for the best found so far".format( s_idx ) )
+  print( "Route {}, Doing the best 1500 routes for the best found so far".format( s_idx ) )
   straightest_path, straightest_path_variation, straight_path_route_length, these_paths, additional_path = do_node(
     graph,
     s_idx,
     straightest_path[0],
     straightest_path[-1],
-    1000
+    1500
   )
-
+  
+  # Append the routes we tried for the best path found
   for path in these_paths:
     paths.append( { "path" : path, "width" : 0.2, "colour" : "orange" } )
 
@@ -295,50 +254,6 @@ def main( argv ):
   straightline.draw_paths( graph, boundary, boundary_gdf, paths, activity + "-" + filename )
 
   os._exit( 0 )
-
-
-
-
-
-  """
-  #path = path[0]
-  short_path_route_length = sum( ox.utils_graph.get_route_edge_attributes( graph, short_path, "length") )
-
-  print( "      route_length: {}, straight line distance: {}".format( short_path_route_length, straight_line_distance ) )
-
-  if short_path_route_length > straight_line_distance * 1.3:
-    print( "      SKIP > 30%" )
-    continue
-
-  if ( straightest_path != None and short_path_route_length > shortest_path_route_length * 1.3 ): 
-    print( "      SKIP: Shortest path 30% over current best shortest route length" )
-    continue
-
-  ## TODO: Add edge attributes which measure how far an edge is from the ideal line, and use that attribute for routing.
-  ##       It's slow.
-  add_edge_distances( graph, start_node, end_node )
-
-  straight_path = ox.shortest_path( graph, start_node, end_node, weight = "from_ideal" )
-  variation = sum( ox.utils_graph.get_route_edge_attributes( graph, straight_path, "from_ideal" ) )
-  straight_path_route_length = sum( ox.utils_graph.get_route_edge_attributes( graph, straight_path, "length" ) )
-
-  print( "      variation {} over {}".format( variation, straight_path_route_length ) )
-
-  # Variation per route length
-  if straightest_path == None or variation / short_path_route_length < straightest_path_variation / short_path_route_length:
-    print( "  BEST YET!" )
-    shortest_path = short_path
-    shortest_path_route_length = short_path_route_length
-    straightest_path = straight_path
-    straightest_path_variation = variation
-    straightest_path_route_length = straight_path_route_length
-
-  paths.append( straight_path )
-  """
-
-  #if a >= 50:
-  #  draw_paths()
-  #  os._exit( 0 )
 
 if __name__ == '__main__':
   main( sys.argv )
