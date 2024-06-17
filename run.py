@@ -72,8 +72,8 @@ def do_node( graph, s_idx, start_node, end_node, count = 3 ):
     if this_end_node_variation - variations[i] > 0.000001:
       continue
 
-    if lengths[ i ] < this_end_node_route_length:
-      print( "Route {}, BEST THIS NODE ON LENGTH".format( s_idx ) )
+    if lengths[ i ] > this_end_node_route_length:
+      print( "Route {}, BEST THIS NODE ON LENGTH, picking longer path".format( s_idx ) )
       print( "Route {}, Old: variation = {}, length = {}".format( s_idx, this_end_node_variation, this_end_node_route_length ) )
       print( "Route {}, New: variation = {}, length = {}".format( s_idx, variations[ i ], lengths[ i ] ) )
 
@@ -145,9 +145,9 @@ def main( argv ):
   #filename = "wales.png"
   #activity = "bike"
 
-  #relation = "R6795460"
-  #filename = "whitchurch.png"
-  #activity = "bike"
+  relation = "R6795460"
+  filename = "whitchurch.png"
+  activity = "bike"
 
   #relation = "R4581086"
   #filename = "shrewsbury.png"
@@ -239,7 +239,7 @@ def main( argv ):
 
 
 
-  pool = multiprocessing.Pool( processes = 8 )
+  pool = multiprocessing.Pool( processes = 16 )
   jobs = []
   for s_idx, start_node in enumerate( boundary_nodes ):
     jobs.append( ( graph, s_idx, start_node, minimum_distance, boundary_nodes ) )

@@ -81,8 +81,8 @@ def setup( relation, activity ):
   boundary_nodes.sort()
   print( "{} unique nodes outside or near boundary".format( len( boundary_nodes ) ) )
 
-  #  Find the minimum distance we're going to allow for candidate routes - a quarter of the diagonal of the map
-  minimum_distance = ox.distance.great_circle_vec( north, west, south, east ) / 4.0
+  #  Find the minimum distance we're going to allow for candidate routes - half of the diagonal of the map
+  minimum_distance = ox.distance.great_circle_vec( north, west, south, east ) / 2
   print( "Minimum permitted distance : {}m".format( minimum_distance ) )
 
 
