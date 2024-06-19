@@ -226,28 +226,16 @@ def do_find( filename, relation, activity ):
 
 
 def main( argv ):
-  #relation = "R167060"
-  #filename = "shropshire.png"
-  #activity = "bike"
-
-  #relation = "R58437"
-  #filename = "wales.png"
-  #activity = "bike"
-
   #relation = "R6795460"
   #filename = "whitchurch.png"
   #activity = "bike"
 
+  relation = "R1410720"
+  filename = "crewe.png"
+  activity = "walk"
+
   #relation = "R4581086"
   #filename = "shrewsbury.png"
-  #activity = "walk"
-
-  #relation = "R146656"
-  #filename = "manchester.png"
-  #activity = "walk"
-
-  #relation = "R1410720"
-  #filename = "crewe.png"
   #activity = "walk"
 
   #relation = "R163183"
@@ -258,24 +246,36 @@ def main( argv ):
   #filename = "florence.png"
   #activity = "bike"
 
+  #relation = "R172987"
+  #filename = "liverpool.png"
+  #activity = "walk"
+
+  #relation = "R146656"
+  #filename = "manchester.png"
+  #activity = "walk"
+
+  #filename = "cardiff.png"
+  #relation = "R1625787"
+  #activity = "walk"
+
+  relation = "R167060"
+  filename = "shropshire.png"
+  activity = "bike"
+
+  #relation = "R65606"
+  #filename = "greater-london.png"
+  #activity = "walk"
+
+  #relation = "R58437"
+  #filename = "wales.png"
+  #activity = "bike"
+
   #relation = "R51701"
   #filename = "switzerland.png"
   #activity = "bike"
 
   #relation = "R214665"
   #filename = "kazakhstan.png"
-  #activity = "walk"
-
-  relation = "R172987"
-  filename = "liverpool.png"
-  activity = "walk"
-
-  #relation = "R65606"
-  #filename = "greater-london.png"
-  #activity = "walk"
-
-  #filename = "cardiff.png"
-  #relation = "R1625787"
   #activity = "walk"
 
   do_find( filename, relation, activity )
