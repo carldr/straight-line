@@ -223,8 +223,8 @@ def main( argv ):
     if s_straightest_path == None:
       continue
 
-    #  We work out the variation in coordination with the path length, so this favours straighter longer paths
-    if straightest_path_variation == None or s_path_length * s_path_variation < straightest_path_variation:
+    #  
+    if straightest_path_variation == None or s_path_length < straightest_path_variation:
       print( "Route {}, RET BEST, path {}km, var {}".format( s_idx, s_path_length, s_path_variation ) )
       straightest_path = s_straightest_path
       straightest_path_variation = s_path_variation
