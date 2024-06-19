@@ -230,21 +230,21 @@ def main( argv ):
   #filename = "whitchurch.png"
   #activity = "bike"
 
-  relation = "R1410720"
-  filename = "crewe.png"
-  activity = "walk"
+  #relation = "R1410720"
+  #filename = "crewe.png"
+  #activity = "walk"
 
   #relation = "R4581086"
   #filename = "shrewsbury.png"
   #activity = "walk"
 
-  #relation = "R163183"
-  #filename = "stoke.png"
-  #activity = "bike"
+  relation = "R163183"
+  filename = "stoke.png"
+  activity = "walk"
 
   #relation = "R42602"
   #filename = "florence.png"
-  #activity = "bike"
+  #activity = "walk"
 
   #relation = "R172987"
   #filename = "liverpool.png"
@@ -258,9 +258,9 @@ def main( argv ):
   #relation = "R1625787"
   #activity = "walk"
 
-  relation = "R167060"
-  filename = "shropshire.png"
-  activity = "bike"
+  #relation = "R167060"
+  #filename = "shropshire.png"
+  #activity = "bike"
 
   #relation = "R65606"
   #filename = "greater-london.png"
