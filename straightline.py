@@ -1,4 +1,5 @@
 import os
+import time
 import osmnx as ox
 from shapely.geometry import MultiPolygon, Polygon, Point
 import geopandas as gpd
@@ -67,7 +68,7 @@ def setup( relation, activity ):
 
     #  If the node is outside the boundary, we definitely want it
     if not point.within( boundary ):
-      print( "{}: outside boundary (checking {} nodes)".format( i, len(nodes) ) )
+      # print( "{}: outside boundary (checking {} nodes)".format( i, len(nodes) ) )
       boundary_nodes.append( street_node )
       continue
 
@@ -85,6 +86,10 @@ def setup( relation, activity ):
   minimum_distance = ox.distance.great_circle_vec( north, west, south, east ) / 2
   print( "Minimum permitted distance : {}m".format( minimum_distance ) )
 
+  print()
+  print("Waiting 5 seconds" )
+  time.sleep(5)
+  print()
 
   return graph, boundary_nodes, minimum_distance, boundary, boundary_gdf
 
