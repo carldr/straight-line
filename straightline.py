@@ -8,11 +8,7 @@ from matplotlib.path import Path
 import matplotlib.patches as patches
 from shapely import difference
 
-def setup( relation, activity ):
-  #  Get the GeoDataFrame
-  gdf = ox.geocode_to_gdf( relation, by_osmid = True )
-
-  #  Some relations have multiple areas, like Cardiff.  For now, we're juat interested in the largest one
+def get_largest_polygon( gdf ):
   largest_poly = None
   largest_poly_area = None
   if type( gdf.geometry[0] ) == MultiPolygon:
@@ -22,6 +18,15 @@ def setup( relation, activity ):
         largest_poly = poly
   else:
     largest_poly = gdf.geometry[0]
+
+  return largest_poly  
+
+def setup( relation, activity ):
+  #  Get the GeoDataFrame
+  gdf = ox.geocode_to_gdf( relation, by_osmid = True )
+
+  #  Some relations have multiple areas, like Cardiff.  For now, we're juat interested in the largest one
+  largest_poly = get_largest_polygon( gdf )
 
   #  Extract the boundary
   boundary = Polygon( list( largest_poly.exterior.coords ) )
@@ -120,7 +125,10 @@ def draw_paths( graph, boundary, boundary_gdf, paths, filename ):
 
   #  Draw the boundary (we could draw the real boundary, before coastal erosion?)
   #
-  patch = patches.PathPatch( Path( list( boundary_gdf.geometry[0].exterior.coords ) ), color = "black", lw = 0.5, fill = False )
+  #  Some relations have multiple areas, like Cardiff.  For now, we're juat interested in the largest one
+  largest_poly = get_largest_polygon( boundary_gdf )
+
+  patch = patches.PathPatch( Path( list( largest_poly.exterior.coords ) ), color = "black", lw = 0.5, fill = False )
   ax.add_patch( patch )
 
   #  Draw the roads
