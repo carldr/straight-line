@@ -144,7 +144,7 @@ def do_start_node( deets ):
 def do_find( filename, relation, activity ):
   graph, boundary_nodes, minimum_distance, boundary, boundary_gdf = straightline.setup( relation, activity )
 
-  pool = multiprocessing.Pool( processes = 16 )
+  pool = multiprocessing.Pool( processes = 12 )
   jobs = []
   for s_idx, start_node in enumerate( boundary_nodes ):
     jobs.append( ( graph, s_idx, start_node, minimum_distance, boundary_nodes ) )
@@ -258,17 +258,17 @@ def main( argv ):
   #relation = "R1625787"
   #activity = "walk"
 
-  relation = "R167060"
-  filename = "shropshire.png"
-  activity = "bike"
+  #relation = "R167060"
+  #filename = "shropshire.png"
+  #activity = "bike"
 
   #relation = "R65606"
   #filename = "greater-london.png"
   #activity = "walk"
 
-  #relation = "R58437"
-  #filename = "wales.png"
-  #activity = "bike"
+  relation = "R58437"
+  filename = "wales.png"
+  activity = "bike"
 
   #relation = "R51701"
   #filename = "switzerland.png"
@@ -276,7 +276,7 @@ def main( argv ):
 
   #relation = "R214665"
   #filename = "kazakhstan.png"
-  #activity = "walk"
+  #activity = "walk"No reve
 
   do_find( filename, relation, activity )
 
