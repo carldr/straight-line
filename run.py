@@ -276,7 +276,7 @@ def main( argv ):
 
   #relation = "R214665"
   #filename = "kazakhstan.png"
-  #activity = "walk"No reve
+  #activity = "walk"
 
   do_find( filename, relation, activity )
 
