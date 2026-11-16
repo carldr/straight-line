@@ -11,14 +11,15 @@ It writes `<activity>-<name>.png` and `<activity>-<name>.gpx`. `README.md` descr
 
 - Run `uv sync` once. The environment is in `.venv/`, with osmnx 2.x.
 - Put the split WGS84 water polygons in `water-polygons-split-4326/` at the repository root. git ignores this directory.
-- Run `uv run python run.py <relation> <walk|bike> <name>`, for example `uv run python run.py 172987 walk liverpool`.
+- Run `uv run python run.py <area> <walk|bike>`. The area is a place name, which `search_boundaries` looks up on Nominatim, or an OSM relation id.
+  A name with several matches asks for a choice on a terminal, and exits otherwise. Use the relation id, such as `172987`, in non-interactive runs.
 
 The repository has no tests, linter or build step. Liverpool (relation 172987) is the usual check: walk gives 92.3 m in about 90 s.
 osmnx writes its HTTP cache to `cache/`, which git ignores.
 
 ## Code layout
 
-- `straightline.py`: Overpass settings, area and graph loading, bicycle one-way rules, PNG and GPX output.
+- `straightline.py`: Nominatim search, Overpass settings, area and graph loading, bicycle one-way rules, PNG and GPX output.
 - `run.py`: the search, the worker processes and the command line.
 
 ## How the search works

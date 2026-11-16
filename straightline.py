@@ -22,6 +22,9 @@ from shapely.ops import polygonize
 
 OVERPASS_URL = "https://overpass-planet.grn.haus/api"
 WATER_POLYGONS_PATH = "water-polygons-split-4326/water_polygons.shp"
+NOMINATIM_SEARCH_URL = "https://nominatim.openstreetmap.org/search"
+#  The Nominatim usage policy requires a User-Agent that names the application.
+NOMINATIM_USER_AGENT = "straight-line-route-finder/0.1"
 
 ox.settings.overpass_url = OVERPASS_URL
 #  The private server has no per-client slots, so osmnx must not wait for one.
@@ -42,6 +45,36 @@ def largest_polygon(geometry):
     if isinstance(geometry, MultiPolygon):
         return max(geometry.geoms, key=lambda polygon: polygon.area)
     return geometry
+
+
+def search_boundaries(query):
+    """Search Nominatim for boundary relations that match a place name.
+
+    Returns a list of (relation id, display name, kind of place), in Nominatim's order of relevance.
+    """
+    response = requests.get(
+        NOMINATIM_SEARCH_URL,
+        params={"q": query, "format": "jsonv2", "limit": 20},
+        headers={"User-Agent": NOMINATIM_USER_AGENT},
+        timeout=60,
+    )
+    response.raise_for_status()
+    return [
+        (result["osm_id"], result["display_name"], result["addresstype"])
+        for result in response.json()
+        if result["osm_type"] == "relation" and result["category"] == "boundary"
+    ]
+
+
+def fetch_relation_name(relation_id):
+    """Return the name tag of an OSM relation, from Overpass."""
+    query = f"[out:json][timeout:60];rel({relation_id});out tags;"
+    response = requests.post(f"{OVERPASS_URL}/interpreter", data={"data": query}, timeout=120)
+    response.raise_for_status()
+    elements = response.json()["elements"]
+    if not elements:
+        sys.exit(f"Relation {relation_id} does not exist.")
+    return elements[0]["tags"].get("name", str(relation_id))
 
 
 def fetch_relation_polygon(relation_id):

@@ -10,6 +10,8 @@ import math
 import multiprocessing
 import os
 import random
+import re
+import sys
 import time
 from dataclasses import dataclass
 
@@ -313,17 +315,51 @@ def run_search(pool, best_deviation, tasks, description):
     return best
 
 
+def choose_area(area_argument):
+    """Return the (relation id, display name) for a place name or an OSM relation id."""
+    if re.fullmatch(r"[Rr]?\d+", area_argument):
+        relation_id = int(area_argument.upper().removeprefix("R"))
+        return relation_id, straightline.fetch_relation_name(relation_id)
+
+    matches = straightline.search_boundaries(area_argument)
+    if not matches:
+        raise SystemExit(f"Nominatim found no boundary for '{area_argument}'.")
+    if len(matches) == 1:
+        return matches[0][0], matches[0][1]
+
+    for number, (relation_id, display_name, kind) in enumerate(matches, start=1):
+        print(f"{number}. {display_name}  ({kind}, relation {relation_id})")
+    if not sys.stdin.isatty():
+        raise SystemExit("Several boundaries match. Run again with the relation id of the one you want.")
+    while True:
+        try:
+            answer = input("Choose an area [1]: ").strip() or "1"
+        except EOFError:
+            raise SystemExit("No area chosen.") from None
+        if answer.isdigit() and 1 <= int(answer) <= len(matches):
+            relation_id, display_name, _ = matches[int(answer) - 1]
+            return relation_id, display_name
+
+
+def file_name_part(text):
+    """Return text in lower case, with each run of other characters than letters and digits changed to one hyphen."""
+    return re.sub(r"[^a-z0-9]+", "-", text.lower()).strip("-")
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("relation", help="OSM relation id, for example 172987 or R172987")
+    parser.add_argument("area", help="place name to search for, such as liverpool, or an OSM relation id, such as 172987")
     parser.add_argument("activity", choices=["walk", "bike"])
-    parser.add_argument("name", help="output name; the files are <activity>-<name>.png and .gpx")
+    parser.add_argument(
+        "--name", help="output name; the files are <activity>-<name>.png and .gpx. Default: the first part of the area's name"
+    )
     parser.add_argument("--min-split", type=float, default=0.35, help="smallest fraction of the area on each side of the line")
     parser.add_argument("--processes", type=int, default=os.cpu_count())
     args = parser.parse_args()
-    relation_id = int(args.relation.upper().removeprefix("R"))
+    relation_id, display_name = choose_area(args.area)
+    name = args.name or file_name_part(display_name.split(",")[0])
 
-    print(f"Loading relation {relation_id}")
+    print(f"Loading {display_name}, relation {relation_id}")
     area_lonlat = straightline.load_area(relation_id)
     print(f"Loading the {args.activity} network")
     graph = straightline.load_graph(area_lonlat, args.activity)
@@ -376,12 +412,12 @@ def main():
     print(f"Straight line: {straight_line.length / 1000:.2f} km, route: {route.length / 1000:.2f} km")
     print(f"The line splits the area {split:.0%} / {1 - split:.0%}")
 
-    filename = f"{args.activity}-{args.name}"
+    filename = f"{args.activity}-{name}"
     straightline.draw_result(
         graph, area, network.node_xy[network.endpoint_nodes], straight_line, deviation, route, f"{filename}.png"
     )
     print(f"Wrote {filename}.png")
-    straightline.write_gpx(graph, route, f"{args.activity} across {args.name}", f"{filename}.gpx")
+    straightline.write_gpx(graph, route, f"{args.activity} across {display_name}", f"{filename}.gpx")
     print(f"Wrote {filename}.gpx")
 
 
