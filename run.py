@@ -35,8 +35,9 @@ from shapely.geometry import LineString
 
 import straightline
 
-#  Endpoint candidates are graph nodes within this distance of the area boundary.
-ENDPOINT_BAND_METRES = 100.0
+#  Endpoint candidates are the nodes where a path crosses the area boundary,
+#  and the nodes within this distance of the boundary, such as the ends and junctions of paths at the coast.
+ENDPOINT_BOUNDARY_TOLERANCE_METRES = 10.0
 #  The search keeps one endpoint candidate per this length of boundary.
 FINE_ENDPOINT_SPACING_METRES = 25.0
 #  The first pass uses at most this many endpoints, so that it checks at most about 2 million pairs.
@@ -67,7 +68,7 @@ class SearchNetwork:
     endpoint_boundary_xy: np.ndarray
     endpoint_shoelace_prefix: np.ndarray
     boundary_shoelace_total: float
-    #  The area, enlarged by ENDPOINT_BAND_METRES so that a line can start at a node just outside the boundary.
+    #  The area, enlarged by ENDPOINT_BOUNDARY_TOLERANCE_METRES so that a line can start at a node just off the boundary.
     area_buffered: shapely.Geometry
     min_split: float
     #  True if some edges are one-way, so that a pair must be checked in both directions.
@@ -255,9 +256,8 @@ def build_search_network(graph, area, min_split):
     segment_ends = np.cumsum(np.hypot(*np.diff(boundary_xy, axis=0).T))
 
     #  Keep the node nearest the boundary in each FINE_ENDPOINT_SPACING_METRES of boundary.
-    band = boundary.buffer(ENDPOINT_BAND_METRES)
-    shapely.prepare(band)
-    candidates = np.flatnonzero(shapely.contains_xy(band, node_xy[:, 0], node_xy[:, 1]))
+    #  A crossing node lies on the boundary, so the distance test also keeps every crossing node.
+    candidates = np.flatnonzero(shapely.distance(boundary, shapely.points(node_xy)) <= ENDPOINT_BOUNDARY_TOLERANCE_METRES)
     candidate_points = shapely.points(node_xy[candidates])
     position = shapely.line_locate_point(boundary, candidate_points)
     distance = shapely.distance(boundary, candidate_points)
@@ -289,7 +289,7 @@ def build_search_network(graph, area, min_split):
         endpoint_boundary_xy=endpoint_boundary_xy,
         endpoint_shoelace_prefix=endpoint_shoelace_prefix,
         boundary_shoelace_total=float(shoelace_prefix[-1]),
-        area_buffered=area.buffer(ENDPOINT_BAND_METRES),
+        area_buffered=area.buffer(ENDPOINT_BOUNDARY_TOLERANCE_METRES),
         min_split=min_split,
         directed=graph.is_directed(),
         max_corridor_width=math.hypot(area.bounds[2] - area.bounds[0], area.bounds[3] - area.bounds[1]),
@@ -418,6 +418,8 @@ def main():
     with stage(f"Simplifying and projecting the {args.activity} network", f"Simplified and projected the {args.activity} network"):
         graph = straightline.prepare_graph(graph, args.activity)
         area = straightline.project_to_graph(area_lonlat, graph)
+    with stage("Clipping the network to the boundary", "Clipped the network to the boundary"):
+        graph = straightline.clip_graph_to_area(graph, area)
     console.print(f"  [dim]{len(graph.nodes)} nodes, {len(graph.edges)} edges, area {area.area / 1e6:.1f} km²[/dim]")
 
     with stage("Preparing the search", "Prepared the search"):

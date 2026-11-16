@@ -14,6 +14,7 @@ import matplotlib
 
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
+import networkx as nx
 import numpy as np
 import osmnx as ox
 import requests
@@ -236,6 +237,52 @@ def prepare_graph(graph, activity):
     graph = ox.simplify_graph(graph)
     graph = ox.truncate.largest_component(graph, strongly=True)
     return ox.project_graph(graph)
+
+
+def clip_graph_to_area(graph, area):
+    """Return the part of a projected graph inside the area.
+
+    Where an edge crosses the area boundary, a new node at the crossing point ends the edge.
+    These nodes have the attribute boundary_crossing. The result keeps only its largest connected part.
+    """
+    shapely.prepare(area)
+    clipped = graph.__class__()
+    clipped.graph = dict(graph.graph)
+    crossing_node_ids = {}
+
+    def node_at(point, u, v):
+        """Return the node at point: u or v if the point is at one of them, else a crossing node."""
+        for node in (u, v):
+            if abs(graph.nodes[node]["x"] - point[0]) < 0.01 and abs(graph.nodes[node]["y"] - point[1]) < 0.01:
+                clipped.add_node(node, **graph.nodes[node])
+                return node
+        key = (round(point[0], 2), round(point[1], 2))
+        if key not in crossing_node_ids:
+            crossing_node_ids[key] = -1 - len(crossing_node_ids)
+            clipped.add_node(crossing_node_ids[key], x=point[0], y=point[1], boundary_crossing=True)
+        return crossing_node_ids[key]
+
+    for u, v, data in graph.edges(data=True):
+        line = edge_line(graph, u, v, data)
+        if area.covers(line):
+            clipped.add_node(u, **graph.nodes[u])
+            clipped.add_node(v, **graph.nodes[v])
+            clipped.add_edge(u, v, **data)
+            continue
+        inside = line.intersection(area)
+        for piece in getattr(inside, "geoms", [inside]):
+            if not isinstance(piece, LineString) or piece.length == 0:
+                continue
+            #  The intersection can reverse a piece, so put each piece back in the direction of the edge.
+            if line.project(shapely.Point(piece.coords[0])) > line.project(shapely.Point(piece.coords[-1])):
+                piece = piece.reverse()
+            piece_start = node_at(piece.coords[0], u, v)
+            piece_end = node_at(piece.coords[-1], u, v)
+            if piece_start != piece_end:
+                clipped.add_edge(piece_start, piece_end, **{**data, "geometry": piece, "length": piece.length})
+
+    components = nx.weakly_connected_components(clipped) if clipped.is_directed() else nx.connected_components(clipped)
+    return clipped.subgraph(max(components, key=len)).copy()
 
 
 def project_to_graph(geometry_lonlat, graph):

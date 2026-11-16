@@ -14,7 +14,7 @@ It writes `<activity>-<name>.png` and `<activity>-<name>.gpx`. `README.md` descr
 - Run `uv run python run.py <area> <walk|bike>`. The area is a place name, which `search_boundaries` looks up on Nominatim, or an OSM relation id.
   A name with several matches asks for a choice on a terminal, and exits otherwise. Use the relation id, such as `172987`, in non-interactive runs.
 
-The repository has no tests, linter or build step. Liverpool (relation 172987) is the usual check: walk gives 92.2 m in about 70 s.
+The repository has no tests, linter or build step. Liverpool (relation 172987) is the usual check: walk gives 92.3 m, with both route ends on the boundary.
 osmnx writes its HTTP cache to `cache/`, which git ignores.
 
 ## Code layout
@@ -26,7 +26,8 @@ osmnx writes its HTTP cache to `cache/`, which git ignores.
 
 1. `load_area` gets the relation from Overpass with `rel(<id>); out geom;`, builds it with `polygonize`, removes the water polygons, and keeps the largest polygon.
 2. `load_graph` projects the graph to UTM, so all search geometry is in metres. Walk is an undirected `MultiGraph`. Bike is a directed `MultiDiGraph`, cut to its largest strongly connected component.
-3. `build_search_network` turns the graph into numpy arrays (`SearchNetwork`). Endpoints are nodes within 100 m of the area's exterior ring, one per 25 m of ring.
+3. `clip_graph_to_area` cuts every edge at the area boundary and adds a `boundary_crossing` node at each cut.
+   `build_search_network` turns the graph into numpy arrays (`SearchNetwork`). Endpoints are nodes within 10 m of the area's exterior ring, which includes every crossing node, one per 25 m of ring.
 4. `area_split` gives the area on each side of a line in O(1) per pair, from shoelace prefix sums along the ring. It is exact only for a line inside the area, and it ignores holes.
 5. `search_from_endpoint` drops pairs below `--min-split` and pairs whose line leaves `area_buffered`.
 6. `pair_deviation` gets the edges within the current best deviation from an STRtree. It then finds the exact smallest deviation by binary search over the edges sorted by deviation, with a BFS reachability check.

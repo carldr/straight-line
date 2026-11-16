@@ -62,7 +62,8 @@ Relation ids from earlier runs:
 1. The script gets the area's boundary and the walk or bike network from the Overpass server `overpass-planet.grn.haus`.
    Only the name search uses Nominatim.
 2. It removes the sea from the area, and keeps the largest piece of land.
-3. It takes the network nodes within 100 m of the boundary as possible start and end points, one per 25 m of boundary.
+3. It cuts the network at the boundary, so every route stays inside the area.
+   The possible start and end points are the places where a path crosses the boundary, and the nodes within 10 m of it, one per 25 m of boundary.
 4. It keeps a pair of points only if the straight line between them stays inside the area and puts at least 35% of the area on each side.
 5. For each pair, it finds the route with the smallest deviation. The deviation is the furthest distance in metres between the route and the straight line.
 6. It takes the pair with the smallest deviation. Of the routes in that pair's corridor, it takes the shortest.
