@@ -81,7 +81,7 @@ def search_boundaries(query):
             matches.append((result["osm_id"], result["display_name"], result["addresstype"]))
         elif result["osm_type"] == "node" and result["category"] == "place":
             for relation_id, tags in boundaries_of_place_nodes.get(result["osm_id"], []):
-                kind = tags.get("designation") or f"admin level {tags.get('admin_level', '?')}".replace("_", " ")
+                kind = (tags.get("designation") or f"admin level {tags.get('admin_level', '?')}").replace("_", " ")
                 matches.append((relation_id, f"{tags.get('name', relation_id)}, for {result['display_name']}", kind))
 
     unique_matches = []
