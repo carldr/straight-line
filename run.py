@@ -381,20 +381,30 @@ def choose_area(area_argument):
             return relation_id, display_name
 
 
+class HelpFormatter(argparse.RawDescriptionHelpFormatter, argparse.ArgumentDefaultsHelpFormatter):
+    """Keep the line breaks of the description, and show each option's default."""
+
+    def _get_help_string(self, action):
+        #  An option with no default value describes its default in its own help text.
+        if action.default is None:
+            return action.help
+        return super()._get_help_string(action)
+
+
 def file_name_part(text):
     """Return text in lower case, with each run of other characters than letters and digits changed to one hyphen."""
     return re.sub(r"[^a-z0-9]+", "-", text.lower()).strip("-")
 
 
 def main():
-    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser = argparse.ArgumentParser(description=__doc__, formatter_class=HelpFormatter)
     parser.add_argument("area", help="place name to search for, such as liverpool, or an OSM relation id, such as 172987")
-    parser.add_argument("activity", choices=["walk", "bike"])
+    parser.add_argument("activity", choices=["walk", "bike"], help="walk uses every path both ways; bike obeys one-way streets")
     parser.add_argument(
-        "--name", help="output name; the files are <activity>-<name>.png and .gpx. Default: the first part of the area's name"
+        "--name", help="output name; the files are <activity>-<name>.png and .gpx (default: the first part of the area's name)"
     )
     parser.add_argument("--min-split", type=float, default=0.35, help="smallest fraction of the area on each side of the line")
-    parser.add_argument("--processes", type=int, default=os.cpu_count())
+    parser.add_argument("--processes", type=int, default=os.cpu_count(), help="number of search processes")
     args = parser.parse_args()
     relation_id, display_name = choose_area(args.area)
     name = args.name or file_name_part(display_name.split(",")[0])
