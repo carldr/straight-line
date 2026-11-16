@@ -1,190 +1,156 @@
-import os
-import time
-import osmnx as ox
-from shapely.geometry import MultiPolygon, Polygon, Point
-import geopandas as gpd
+"""Load an OpenStreetMap area and its path network, and draw the result.
+
+All geometry that this module returns is in the graph's UTM projection, in metres.
+"""
+
+import sys
+import subprocess
+
+import geopandas
+import matplotlib
+
+matplotlib.use("Agg")
 import matplotlib.pyplot as plt
-from matplotlib.path import Path
-import matplotlib.patches as patches
-from shapely import difference
+import numpy as np
+import osmnx as ox
+import requests
+import shapely
+from matplotlib.collections import LineCollection
+from shapely.geometry import LineString, MultiPolygon, Polygon
+from shapely.ops import polygonize
 
-def get_largest_polygon( gdf ):
-  largest_poly = None
-  largest_poly_area = None
-  if type( gdf.geometry[0] ) == MultiPolygon:
-    for poly in list( gdf.geometry[0].geoms ):
-      if largest_poly_area == None or poly.area > largest_poly_area:
-        largest_poly_area = poly.area
-        largest_poly = poly
-  else:
-    largest_poly = gdf.geometry[0]
+OVERPASS_URL = "https://overpass-planet.grn.haus/api"
+WATER_POLYGONS_PATH = "water-polygons-split-4326/water_polygons.shp"
 
-  return largest_poly  
-
-def setup( relation, activity ):
-  #  Get the GeoDataFrame
-  gdf = ox.geocode_to_gdf( relation, by_osmid = True )
-
-  #  Some relations have multiple areas, like Cardiff.  For now, we're juat interested in the largest one
-  largest_poly = get_largest_polygon( gdf )
-
-  #  Extract the boundary
-  boundary = Polygon( list( largest_poly.exterior.coords ) )
-  west, north, east, south = boundary.bounds
-
-  #  Load the coastline
-  coastlines = gpd.read_file( 'water-polygons-split-4326/water_polygons.shp', bbox=( west, north, east, south ) )
-  for i in range( len( coastlines ) ):
-    water = coastlines.loc[ i, 'geometry' ]
-
-    boundary = difference( boundary, water )
-
-  boundary_gdf = gpd.GeoDataFrame( index=[0], crs='epsg:4326', geometry=[ boundary ] )
-  west, north, east, south = boundary.bounds
-
-  #  Build a graph of cycleable routes, "all_private", "all", "bike", "drive", "drive_service", "walk"
-  graph = ox.graph_from_polygon(
-    boundary,
-    network_type = activity,
-    truncate_by_edge = True,
-    retain_all = True
-  )
-
-  #  Get a strongly connected graph, see https://stackoverflow.com/questions/63690631/osmnx-shortest-path-how-to-skip-node-if-not-reachable-and-take-the-next-neares
-  #  This fixes a number of nodes which otherwise couldn't be routed to/from
-  #  TODO: Oh, I wonder if others are because they are one-way?
-  graph = ox.utils_graph.get_largest_component( graph, strongly=True )
-
-  #  Show how many coords we have in the boundary
-  coords = largest_poly.exterior.coords
-  print( "{} coords in boundary".format( len( coords ) ) )
-
-  #  For of those, find the closest node to each.
-  nodes, dists = ox.nearest_nodes( graph, [ coord[0] for coord in coords ], [ coord[1] for coord in coords ], return_dist = True )
-  print( "{} nodes in boundary".format( len( nodes ) ) )
-
-  boundary_nodes = []
-  for i in range(len(nodes)):
-    street_node = nodes[ i ]
-    dist = dists[ i ]
-
-    node_loc = graph.nodes[ street_node ]
-    point = Point( node_loc[ "x" ], node_loc[ "y" ] )
-
-    #  If the node is outside the boundary, we definitely want it
-    if not point.within( boundary ):
-      # print( "{}: outside boundary (checking {} nodes)".format( i, len(nodes) ) )
-      boundary_nodes.append( street_node )
-      continue
-
-    if dist < 5.0: # Less than 5m?
-      boundary_nodes.append( street_node )
-
-  print( "{} nodes outside or near boundary".format( len( boundary_nodes ) ) )
-
-  #  Get a unique list of nodes that are close to the boundary, this should be a lot fewer than the number of coords
-  boundary_nodes = list( set( boundary_nodes ) )
-  boundary_nodes.sort()
-  print( "{} unique nodes outside or near boundary".format( len( boundary_nodes ) ) )
-
-  #  Find the minimum distance we're going to allow for candidate routes - half of the diagonal of the map
-  minimum_distance = ox.distance.great_circle_vec( north, west, south, east ) / 2
-  print( "Minimum permitted distance : {}m".format( minimum_distance ) )
-
-  print()
-  print("Waiting 5 seconds" )
-  time.sleep(5)
-  print()
-
-  return graph, boundary_nodes, minimum_distance, boundary, boundary_gdf
+ox.settings.overpass_url = OVERPASS_URL
+#  The private server has no per-client slots, so osmnx must not wait for one.
+ox.settings.overpass_rate_limit = False
+ox.settings.requests_timeout = 900
+ox.settings.overpass_settings = "[out:json][timeout:{timeout}][maxsize:4000000000]"
+ox.settings.use_cache = True
+ox.settings.log_console = False
 
 
+def largest_polygon(geometry):
+    """Return the largest polygon of a Polygon or MultiPolygon."""
+    if isinstance(geometry, MultiPolygon):
+        return max(geometry.geoms, key=lambda polygon: polygon.area)
+    return geometry
 
 
+def fetch_relation_polygon(relation_id):
+    """Fetch an OSM relation from Overpass and build its area, in longitude and latitude."""
+    query = f"[out:json][timeout:300];rel({relation_id});out geom;"
+    response = requests.post(f"{OVERPASS_URL}/interpreter", data={"data": query}, timeout=600)
+    response.raise_for_status()
+    elements = response.json()["elements"]
+    if not elements:
+        sys.exit(f"Relation {relation_id} does not exist.")
+
+    outer_lines = []
+    inner_lines = []
+    for member in elements[0]["members"]:
+        if member["type"] != "way" or "geometry" not in member:
+            continue
+        line = LineString([(point["lon"], point["lat"]) for point in member["geometry"]])
+        if member["role"] == "inner":
+            inner_lines.append(line)
+        else:
+            outer_lines.append(line)
+
+    #  polygonize joins the member ways into closed rings, in any order and direction.
+    outer = shapely.union_all(list(polygonize(outer_lines)))
+    inner = shapely.union_all(list(polygonize(inner_lines)))
+    return outer.difference(inner)
 
 
+def load_area(relation_id):
+    """Return the land area of a relation, in longitude and latitude.
+
+    The area is the largest polygon of the relation, less the sea, less any islands that the sea cuts off.
+    """
+    relation_polygon = largest_polygon(fetch_relation_polygon(relation_id))
+    water = geopandas.read_file(WATER_POLYGONS_PATH, bbox=relation_polygon.bounds)
+    land = relation_polygon.difference(shapely.union_all(water.geometry.values))
+    return largest_polygon(land)
 
 
+def load_graph(area_lonlat, activity):
+    """Fetch the path network for the activity inside the area, as an undirected graph in UTM metres.
+
+    The graph is undirected, so every route can be walked or cycled in both directions.
+    """
+    graph = ox.graph_from_polygon(area_lonlat, network_type=activity, truncate_by_edge=True)
+    graph = ox.project_graph(graph)
+    return ox.convert.to_undirected(graph)
 
 
-def draw_paths( graph, boundary, boundary_gdf, paths, filename ):
-  print( "{} paths to draw".format( len( paths ) ) )
+def project_to_graph(geometry_lonlat, graph):
+    """Project a longitude and latitude geometry into the graph's CRS."""
+    geometry, _ = ox.projection.project_geometry(geometry_lonlat, to_crs=graph.graph["crs"])
+    return geometry
 
-  #  Set up the figure
-  fig, ax = plt.subplots( figsize = ( 8, 8 ), layout = "constrained" )
-  ax.set_facecolor( "white" )
 
-  #  Set up the axes
-  #
-  #  Mostly from _config_ax : https://github.com/gboeing/osmnx/blob/c034e2bf670bd8e9e46c5605bc989a7d916d58f3/osmnx/plot.py#L769 
-  ax.margins( 0 )
-  ax.get_xaxis().set_visible( False )
-  ax.get_yaxis().set_visible( False )
-  ax.tick_params( which = "both", direction = "in" )
-  _ = [s.set_visible(False) for s in ax.spines.values()]
+def edge_line(graph, u, v, data):
+    """Return the geometry of an edge, as a line from u to v."""
+    if "geometry" in data:
+        line = data["geometry"]
+    else:
+        line = LineString([(graph.nodes[u]["x"], graph.nodes[u]["y"]), (graph.nodes[v]["x"], graph.nodes[v]["y"])])
+    start_x, start_y = line.coords[0]
+    distance_start_to_u = (start_x - graph.nodes[u]["x"]) ** 2 + (start_y - graph.nodes[u]["y"]) ** 2
+    distance_start_to_v = (start_x - graph.nodes[v]["x"]) ** 2 + (start_y - graph.nodes[v]["y"]) ** 2
+    if distance_start_to_v < distance_start_to_u:
+        line = line.reverse()
+    return line
 
-  #  Draw the boundary (we could draw the real boundary, before coastal erosion?)
-  #
-  #  Some relations have multiple areas, like Cardiff.  For now, we're juat interested in the largest one
-  largest_poly = get_largest_polygon( boundary_gdf )
 
-  patch = patches.PathPatch( Path( list( largest_poly.exterior.coords ) ), color = "black", lw = 0.5, fill = False )
-  ax.add_patch( patch )
+def route_line(graph, route_nodes, corridor_edges):
+    """Join the edges of a route into one line.
 
-  #  Draw the roads
-  #
-  fig, ax = ox.plot_graph(
-    graph,
-    ax = ax,
-    show = False,
-    close = False,
-    edge_color = "black",
-    edge_linewidth = 0.1,
-    node_size = 1,
-    node_color = "black"
-  )
+    Between two nodes, the route uses the shortest parallel edge in corridor_edges.
+    """
+    coords = []
+    for u, v in zip(route_nodes[:-1], route_nodes[1:]):
+        keys = [key for key in graph[u][v] if (u, v, key) in corridor_edges or (v, u, key) in corridor_edges]
+        key = min(keys, key=lambda key: graph[u][v][key]["length"])
+        line_coords = list(edge_line(graph, u, v, graph[u][v][key]).coords)
+        coords.extend(line_coords if not coords else line_coords[1:])
+    return LineString(coords)
 
-  #  Draw the routes
-  #
-  for idx, path in enumerate( paths ):
-    print( "Drawing path {}/{}".format( idx+1, len( paths ) ) )
 
-    fig, ax = ox.plot_graph_route(
-      graph,
-      path[ "path" ],
-      ax = ax,
-      show = False,
-      close = False,
-      route_alpha = 1.0, 
-      route_color = path[ "colour" ],
-      route_linewidth = path[ "width" ],
-      orig_dest_size = 5
-    )
+def draw_result(graph, area, endpoint_xy, straight_line, max_deviation, route, filename):
+    """Draw the area, the network, the corridor, the straight line and the route to a PNG."""
+    west, south, east, north = area.bounds
+    width = east - west
+    height = north - south
+    scale = 12 / max(width, height)
+    fig, ax = plt.subplots(figsize=(max(width * scale, 4), max(height * scale, 4)), layout="constrained")
+    ax.set_aspect("equal")
+    ax.set_axis_off()
 
-  for path in paths:
-    if "line" in path.keys() and path[ "line" ] == True:
-      first_loc = graph.nodes[ path[ "path" ][ 0 ] ]
-      last_loc = graph.nodes[ path[ "path" ][ -1 ] ]
-    
-      patch = patches.Arrow(
-        first_loc[ 'x' ],
-        first_loc[ 'y' ],
-        last_loc[ 'x' ] - first_loc[ 'x' ],
-        last_loc[ 'y' ] - first_loc[ 'y' ],
-        linewidth = 0.4,
-        width = 0.0001,
-        fill = False,
-        color = "blue"
-      )
-      ax.add_patch( patch )
+    edge_lines = [np.asarray(edge_line(graph, u, v, data).coords) for u, v, data in graph.edges(data=True)]
+    ax.add_collection(LineCollection(edge_lines, colors="#999999", linewidths=0.15))
 
-  #  Reset the bounds
-  #
-  west, north, east, south = boundary.bounds
-  ax.set_xlim( west - 0.005, east + 0.005 )
-  ax.set_ylim( north - 0.005, south + 0.005 )
+    for ring in [area.exterior, *area.interiors]:
+        x, y = ring.xy
+        ax.plot(x, y, color="black", linewidth=0.6)
 
-  fig.savefig( filename, dpi = 2000 )
+    corridor = straight_line.buffer(max_deviation, cap_style="flat")
+    x, y = corridor.exterior.xy
+    ax.fill(x, y, color="#4c9be8", alpha=0.25, linewidth=0)
 
-  print( "Opening " + filename )
-  os.system( "open {}".format( filename ) )
+    ax.scatter(endpoint_xy[:, 0], endpoint_xy[:, 1], s=0.5, color="red", linewidths=0)
+
+    x, y = straight_line.xy
+    ax.plot(x, y, color="blue", linewidth=0.4)
+    x, y = route.xy
+    ax.plot(x, y, color="green", linewidth=1.0)
+
+    ax.set_xlim(west - width * 0.02, east + width * 0.02)
+    ax.set_ylim(south - height * 0.02, north + height * 0.02)
+    fig.savefig(filename, dpi=300)
+    plt.close(fig)
+
+    if sys.platform == "darwin":
+        subprocess.run(["open", filename], check=False)
