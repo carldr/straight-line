@@ -27,6 +27,8 @@ WATER_POLYGONS_PATH = "water-polygons-split-4326/water_polygons.shp"
 NOMINATIM_SEARCH_URL = "https://nominatim.openstreetmap.org/search"
 #  The Nominatim usage policy requires a User-Agent that names the application.
 NOMINATIM_USER_AGENT = "straight-line-route-finder/0.1"
+#  The largest number of results that Nominatim gives for one search.
+NOMINATIM_RESULT_LIMIT = 40
 
 ox.settings.overpass_url = OVERPASS_URL
 #  The private server has no per-client slots, so osmnx must not wait for one.
@@ -55,20 +57,60 @@ def largest_polygon(geometry):
 def search_boundaries(query):
     """Search Nominatim for boundary relations that match a place name.
 
+    Nominatim often finds a town as a place node, with its boundary in a relation of another name,
+    such as Whitchurch and "Whitchurch Urban". For each place node, the result lists the boundaries that the node belongs to.
+
     Returns a list of (relation id, display name, kind of place), in Nominatim's order of relevance.
     """
     response = requests.get(
         NOMINATIM_SEARCH_URL,
-        params={"q": query, "format": "jsonv2", "limit": 20},
+        params={"q": query, "format": "jsonv2", "limit": NOMINATIM_RESULT_LIMIT},
         headers={"User-Agent": NOMINATIM_USER_AGENT},
         timeout=60,
     )
     response.raise_for_status()
-    return [
-        (result["osm_id"], result["display_name"], result["addresstype"])
-        for result in response.json()
-        if result["osm_type"] == "relation" and result["category"] == "boundary"
+    results = response.json()
+    place_node_ids = [
+        result["osm_id"] for result in results if result["osm_type"] == "node" and result["category"] == "place"
     ]
+    boundaries_of_place_nodes = fetch_boundaries_of_nodes(place_node_ids)
+
+    matches = []
+    for result in results:
+        if result["osm_type"] == "relation" and result["category"] == "boundary":
+            matches.append((result["osm_id"], result["display_name"], result["addresstype"]))
+        elif result["osm_type"] == "node" and result["category"] == "place":
+            for relation_id, tags in boundaries_of_place_nodes.get(result["osm_id"], []):
+                kind = tags.get("designation") or f"admin level {tags.get('admin_level', '?')}".replace("_", " ")
+                matches.append((relation_id, f"{tags.get('name', relation_id)}, for {result['display_name']}", kind))
+
+    unique_matches = []
+    seen_relation_ids = set()
+    for match in matches:
+        if match[0] not in seen_relation_ids:
+            seen_relation_ids.add(match[0])
+            unique_matches.append(match)
+    return unique_matches
+
+
+def fetch_boundaries_of_nodes(node_ids):
+    """Return, for each node id, the (relation id, tags) of the boundary relations that have the node as a member."""
+    if not node_ids:
+        return {}
+    query = f"[out:json][timeout:60];node(id:{','.join(map(str, node_ids))});foreach{{out ids;rel(bn)[boundary];out tags;}}"
+    response = requests.post(f"{OVERPASS_URL}/interpreter", data={"data": query}, timeout=120)
+    response.raise_for_status()
+
+    #  foreach writes each node, then the relations of that node.
+    boundaries = {}
+    current_node_id = None
+    for element in response.json()["elements"]:
+        if element["type"] == "node":
+            current_node_id = element["id"]
+            boundaries[current_node_id] = []
+        else:
+            boundaries[current_node_id].append((element["id"], element.get("tags", {})))
+    return boundaries
 
 
 def fetch_relation_name(relation_id):
