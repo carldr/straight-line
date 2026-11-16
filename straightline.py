@@ -29,6 +29,11 @@ ox.settings.requests_timeout = 900
 ox.settings.overpass_settings = "[out:json][timeout:{timeout}][maxsize:4000000000]"
 ox.settings.use_cache = True
 ox.settings.log_console = False
+#  apply_bicycle_one_way reads these tags.
+ox.settings.useful_tags_way = [*ox.settings.useful_tags_way, "oneway:bicycle", "cycleway"]
+
+#  These tags let a bicycle go against a one-way street.
+BICYCLE_CONTRAFLOW_CYCLEWAY_VALUES = {"opposite", "opposite_lane", "opposite_track"}
 
 
 def largest_polygon(geometry):
@@ -75,14 +80,36 @@ def load_area(relation_id):
     return largest_polygon(land)
 
 
-def load_graph(area_lonlat, activity):
-    """Fetch the path network for the activity inside the area, as an undirected graph in UTM metres.
+def apply_bicycle_one_way(graph):
+    """Change the directions of an unsimplified bike graph to the directions that a bicycle may legally use.
 
-    The graph is undirected, so every route can be walked or cycled in both directions.
+    osmnx makes every one-way street one-way, and ignores the tags that change the direction for bicycles only.
     """
-    graph = ox.graph_from_polygon(area_lonlat, network_type=activity, truncate_by_edge=True)
-    graph = ox.project_graph(graph)
-    return ox.convert.to_undirected(graph)
+    for u, v, key, data in list(graph.edges(keys=True, data=True)):
+        oneway_bicycle = data.get("oneway:bicycle")
+        if data["oneway"]:
+            if oneway_bicycle == "no" or data.get("cycleway") in BICYCLE_CONTRAFLOW_CYCLEWAY_VALUES:
+                graph.add_edge(v, u, **{**data, "reversed": True})
+        elif oneway_bicycle in ("yes", "true", "1") and data["reversed"]:
+            graph.remove_edge(u, v, key)
+        elif oneway_bicycle in ("-1", "reverse") and not data["reversed"]:
+            graph.remove_edge(u, v, key)
+
+
+def load_graph(area_lonlat, activity):
+    """Fetch the path network for the activity inside the area, in UTM metres.
+
+    The walk graph is undirected. The bike graph is directed, and every node in it can reach every other node.
+    """
+    if activity == "walk":
+        graph = ox.graph_from_polygon(area_lonlat, network_type="walk", truncate_by_edge=True)
+        return ox.convert.to_undirected(ox.project_graph(graph))
+
+    graph = ox.graph_from_polygon(area_lonlat, network_type="bike", truncate_by_edge=True, simplify=False)
+    apply_bicycle_one_way(graph)
+    graph = ox.simplify_graph(graph)
+    graph = ox.truncate.largest_component(graph, strongly=True)
+    return ox.project_graph(graph)
 
 
 def project_to_graph(geometry_lonlat, graph):
@@ -105,15 +132,14 @@ def edge_line(graph, u, v, data):
     return line
 
 
-def route_line(graph, route_nodes, corridor_edges):
+def route_line(graph, route_nodes):
     """Join the edges of a route into one line.
 
-    Between two nodes, the route uses the shortest parallel edge in corridor_edges.
+    Between two nodes, the route uses the shortest of the parallel edges in graph.
     """
     coords = []
     for u, v in zip(route_nodes[:-1], route_nodes[1:]):
-        keys = [key for key in graph[u][v] if (u, v, key) in corridor_edges or (v, u, key) in corridor_edges]
-        key = min(keys, key=lambda key: graph[u][v][key]["length"])
+        key = min(graph[u][v], key=lambda key: graph[u][v][key]["length"])
         line_coords = list(edge_line(graph, u, v, graph[u][v][key]).coords)
         coords.extend(line_coords if not coords else line_coords[1:])
     return LineString(coords)

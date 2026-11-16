@@ -17,7 +17,7 @@ import networkx as nx
 import numpy as np
 import shapely
 from scipy.sparse import coo_matrix
-from scipy.sparse.csgraph import connected_components
+from scipy.sparse.csgraph import breadth_first_order
 from shapely.geometry import LineString
 
 import straightline
@@ -37,9 +37,11 @@ class SearchNetwork:
     """The path network and endpoint candidates, as arrays that the worker processes share."""
 
     node_xy: np.ndarray
-    #  Edge e joins nodes edge_u[e] and edge_v[e], and has vertices vertex_xy[vertex_offsets[e]:vertex_offsets[e + 1]].
+    #  Edge e goes from node edge_u[e] to node edge_v[e], and back if edge_two_way[e].
+    #  Its vertices are vertex_xy[vertex_offsets[e]:vertex_offsets[e + 1]].
     edge_u: np.ndarray
     edge_v: np.ndarray
+    edge_two_way: np.ndarray
     vertex_xy: np.ndarray
     vertex_offsets: np.ndarray
     #  Endpoint candidates, in order along the area boundary.
@@ -53,6 +55,10 @@ class SearchNetwork:
     #  The area, enlarged by ENDPOINT_BAND_METRES so that a line can start at a node just outside the boundary.
     area_buffered: shapely.Geometry
     min_split: float
+    #  True if some edges are one-way, so that a pair must be checked in both directions.
+    directed: bool
+    #  A route that deviates further than this leaves the area, so the search stops widening the corridor.
+    max_corridor_width: float
 
 
 _network: SearchNetwork
@@ -89,24 +95,27 @@ def edge_max_deviations(edge_ids, line_start, line_end):
 
 
 def edges_connect(edge_ids, start_node, end_node):
-    """Return True if the edges join start_node to end_node."""
+    """Return True if the edges give a route from start_node to end_node."""
     if len(edge_ids) == 0:
         return False
-    edge_count = len(edge_ids)
-    nodes, local_index = np.unique(
-        np.concatenate((_network.edge_u[edge_ids], _network.edge_v[edge_ids])), return_inverse=True
-    )
+    edge_u = _network.edge_u[edge_ids]
+    edge_v = _network.edge_v[edge_ids]
+    two_way = _network.edge_two_way[edge_ids]
+    sources = np.concatenate((edge_u, edge_v[two_way]))
+    targets = np.concatenate((edge_v, edge_u[two_way]))
+    nodes, local_index = np.unique(np.concatenate((sources, targets)), return_inverse=True)
     start_position = np.searchsorted(nodes, start_node)
     end_position = np.searchsorted(nodes, end_node)
     if start_position >= len(nodes) or nodes[start_position] != start_node:
         return False
     if end_position >= len(nodes) or nodes[end_position] != end_node:
         return False
+    arc_count = len(sources)
     adjacency = coo_matrix(
-        (np.ones(edge_count), (local_index[:edge_count], local_index[edge_count:])), shape=(len(nodes), len(nodes))
-    )
-    _, labels = connected_components(adjacency, directed=False)
-    return labels[start_position] == labels[end_position]
+        (np.ones(arc_count), (local_index[:arc_count], local_index[arc_count:])), shape=(len(nodes), len(nodes))
+    ).tocsr()
+    reached = breadth_first_order(adjacency, start_position, directed=True, return_predecessors=False)
+    return bool(np.any(reached == end_position))
 
 
 def corridor_edges(start_node, end_node, width):
@@ -134,6 +143,8 @@ def pair_deviation(start_node, end_node, bound):
             edge_ids, deviations = corridor_edges(start_node, end_node, width)
             if edges_connect(edge_ids, start_node, end_node):
                 break
+            if width > _network.max_corridor_width:
+                return None
             width *= 2
     else:
         edge_ids, deviations = corridor_edges(start_node, end_node, bound)
@@ -174,9 +185,9 @@ def area_split(start_endpoint, end_endpoints):
 
 
 def search_from_endpoint(task):
-    """Check every valid pair of one start endpoint with a list of end endpoints.
+    """Check every valid pair of one start endpoint with a list of end endpoints, in both directions if directed.
 
-    Returns the best (deviation, start endpoint, end endpoint) that improved the shared best, or None.
+    Returns the best (deviation, from endpoint, to endpoint) that improved the shared best, or None.
     """
     start_endpoint, end_endpoints = task
     end_endpoints = end_endpoints[end_endpoints != start_endpoint]
@@ -193,14 +204,18 @@ def search_from_endpoint(task):
 
     best = None
     for end_endpoint, end_node in zip(end_endpoints[lines_inside], end_nodes[lines_inside]):
-        deviation = pair_deviation(start_node, end_node, _best_deviation.value)
-        if deviation is None:
-            continue
-        with _best_deviation.get_lock():
-            if deviation < _best_deviation.value:
-                _best_deviation.value = deviation
-        if best is None or deviation < best[0]:
-            best = (deviation, start_endpoint, int(end_endpoint))
+        directions = [(start_endpoint, int(end_endpoint), start_node, end_node)]
+        if _network.directed:
+            directions.append((int(end_endpoint), start_endpoint, end_node, start_node))
+        for from_endpoint, to_endpoint, from_node, to_node in directions:
+            deviation = pair_deviation(from_node, to_node, _best_deviation.value)
+            if deviation is None:
+                continue
+            with _best_deviation.get_lock():
+                if deviation < _best_deviation.value:
+                    _best_deviation.value = deviation
+            if best is None or deviation < best[0]:
+                best = (deviation, from_endpoint, to_endpoint)
     return best
 
 
@@ -251,6 +266,7 @@ def build_search_network(graph, area, min_split):
         node_xy=node_xy,
         edge_u=edge_u,
         edge_v=edge_v,
+        edge_two_way=np.full(len(edges), not graph.is_directed()),
         vertex_xy=vertex_xy,
         vertex_offsets=vertex_offsets,
         endpoint_nodes=endpoint_nodes,
@@ -260,6 +276,8 @@ def build_search_network(graph, area, min_split):
         boundary_shoelace_total=float(shoelace_prefix[-1]),
         area_buffered=area.buffer(ENDPOINT_BAND_METRES),
         min_split=min_split,
+        directed=graph.is_directed(),
+        max_corridor_width=math.hypot(area.bounds[2] - area.bounds[0], area.bounds[3] - area.bounds[1]),
     )
     return network, nodes, edges
 
@@ -349,7 +367,7 @@ def main():
     corridor_keys = {(edges[edge][0], edges[edge][1], edges[edge][2]) for edge in corridor_ids}
     corridor_graph = graph.edge_subgraph(corridor_keys)
     route_nodes = nx.shortest_path(corridor_graph, nodes[start_node], nodes[end_node], weight="length")
-    route = straightline.route_line(graph, route_nodes, corridor_keys)
+    route = straightline.route_line(corridor_graph, route_nodes)
 
     straight_line = LineString([network.node_xy[start_node], network.node_xy[end_node]])
     split = area_split(start_endpoint, np.array([end_endpoint]))[0]
