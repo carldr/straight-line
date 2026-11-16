@@ -18,29 +18,55 @@ straight line planning across countryside like Geowizard does.
 
 ## Running
 
-- Edit the `relation`, `filename` and `activity` variables to suit.
-  - The `activity` is placed before `filename` when writing the image.
-  - You get the relation number by searching on https://www.openstreetmap.org/ and searching for towns, cities, countries etc.  There are some examples.
-- `python run.py`
+```sh
+uv run python run.py <relation> <walk|bike> <name>
+```
 
-## Current issues
+For example, `uv run python run.py 172987 walk liverpool` writes `walk-liverpool.png` and `walk-liverpool.gpx`.
+To find a relation id, search for the town, county or country on https://www.openstreetmap.org/.
 
-- Only tested on macOS.  It should work elsewhere, you'll need to change/remove the call to `os.system` at the end of `draw_paths` on other OSs.
-- Hardcoded to use 16 processes to route find.
-- It assumes directions betweeen two nodes are bi-directional (which is probably fine for walking) and uses that to do half the number of
-  path finds.
-- It's pretty slow when doing country or large-county/state sized regions.
-  - And with 16 processes, there isn't enough RAM in the world.
-- Doesn't output a .gpx of the final route.
-- The code is messy due to the high level of experimenting going on.
+| Option | Default | What it does |
+|---|---|---|
+| `--min-split` | `0.35` | Sets the smallest fraction of the area that each side of the straight line must have. |
+| `--processes` | number of CPUs | Sets the number of search processes. |
 
-## Missing
+Some relations from earlier runs:
 
-- Doesn't try and calculate how far from straight the line is (ie, how far off a perfect straightline you'd go by travering the route.)
+| Area | Relation |
+|---|---|
+| Whitchurch | 6795460 |
+| Crewe | 1410720 |
+| Shrewsbury | 4581086 |
+| Stoke-on-Trent | 163183 |
+| Liverpool | 172987 |
+| Manchester | 146656 |
+| Cardiff | 1625787 |
+| Shropshire | 167060 |
+| Greater London | 65606 |
+| Wales | 58437 |
+
+## How it works
+
+1. The script gets the area's boundary and the walk or bike network from the Overpass server `overpass-planet.grn.haus`.
+2. It removes the sea from the area, and keeps the largest piece of land.
+3. It takes the network nodes within 100 m of the boundary as possible start and end points, one per 25 m of boundary.
+4. It keeps a pair of points only if the straight line between them stays inside the area and puts at least 35% of the area on each side.
+5. For each pair, it finds the route with the smallest deviation. The deviation is the furthest distance in metres between the route and the straight line.
+6. It takes the pair with the smallest deviation. Of the routes in that pair's corridor, it takes the shortest.
+
+The search measures the shape of every road, not only its junctions.
+Walk routes use every path in both directions.
+Bike routes obey one-way streets, except where `oneway:bicycle=no` or `cycleway=opposite*` allows cycling against the traffic.
+
+On an area with more than 2000 possible points, such as a country, the search first uses one point per 1/2000 of the boundary.
+It then checks the 25 m points near the best pair. This second pass can miss a better pair elsewhere.
+
+In the PNG, the green line is the route, the blue line is the straight line, and the blue band is the corridor.
+The red dots are the possible start and end points.
 
 ## Example
 
-There are several .pngs in the repository, but here is one showing the straightest route when walking across Liverpool.
+This is the straightest route when walking across Liverpool.
 
 ![Straightest route walking across Liverpool](walk-liverpool.png)
 
