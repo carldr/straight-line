@@ -9,11 +9,8 @@ straight line planning across countryside like Geowizard does.
 
 ## Dependencies
 
-- `brew install miniconda`
-- `conda config --prepend channels conda-forge`
-- `conda create -n ox --strict-channel-priority osmnx`
-- `conda init zsh`
-- Open new terminal, `conda activate ox`
+- Install [uv](https://docs.astral.sh/uv/), for example with `brew install uv`.
+- Run `uv sync` in the repository. uv creates `.venv/` with the packages that `pyproject.toml` lists.
 
 - Get the world's coastline water polygons from https://osmdata.openstreetmap.de/data/water-polygons.html
   - Download the most recent shapefile, the split version, in WGS84 format.  It's about 762MB zipped.

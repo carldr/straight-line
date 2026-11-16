@@ -1,0 +1,13 @@
+[project]
+name = "straight-line"
+version = "0.1.0"
+description = "Find the straightest walking or cycling route across an OpenStreetMap area."
+requires-python = ">=3.13"
+dependencies = [
+    "osmnx>=2.0",
+    "matplotlib",
+    "scipy",
+]
+
+[tool.uv]
+package = false
