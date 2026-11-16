@@ -344,7 +344,15 @@ def draw_result(graph, area, area_name, endpoint_xy, straight_line, max_deviatio
     ax.set_aspect("equal")
     ax.set_axis_off()
 
-    edge_lines = [np.asarray(edge_line(graph, u, v, data).coords) for u, v, data in graph.edges(data=True)]
+    #  A directed graph has one edge per direction of a two-way street. Draw each street once,
+    #  because two anti-aliased copies of a line look thicker than one.
+    edge_lines = []
+    drawn_streets = set()
+    for u, v, data in graph.edges(data=True):
+        street = (frozenset((u, v)), round(data["length"], 1))
+        if street not in drawn_streets:
+            drawn_streets.add(street)
+            edge_lines.append(np.asarray(edge_line(graph, u, v, data).coords))
     ax.add_collection(LineCollection(edge_lines, colors="#999999", linewidths=0.15))
 
     for ring in [area.exterior, *area.interiors]:
