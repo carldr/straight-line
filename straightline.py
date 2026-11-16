@@ -5,6 +5,7 @@ All geometry that this module returns is in the graph's UTM projection, in metre
 
 import sys
 import subprocess
+import xml.sax.saxutils
 
 import geopandas
 import matplotlib
@@ -143,6 +144,19 @@ def route_line(graph, route_nodes):
         line_coords = list(edge_line(graph, u, v, graph[u][v][key]).coords)
         coords.extend(line_coords if not coords else line_coords[1:])
     return LineString(coords)
+
+
+def write_gpx(graph, route, name, filename):
+    """Write the route to a GPX 1.1 file, as one track."""
+    route_lonlat, _ = ox.projection.project_geometry(route, crs=graph.graph["crs"], to_latlong=True)
+    points = "\n".join(f'      <trkpt lat="{lat:.7f}" lon="{lon:.7f}"/>' for lon, lat in route_lonlat.coords)
+    with open(filename, "w", encoding="utf-8") as gpx_file:
+        gpx_file.write(
+            '<?xml version="1.0" encoding="UTF-8"?>\n'
+            '<gpx version="1.1" creator="straight-line" xmlns="http://www.topografix.com/GPX/1/1">\n'
+            f"  <trk>\n    <name>{xml.sax.saxutils.escape(name)}</name>\n    <trkseg>\n{points}\n    </trkseg>\n  </trk>\n"
+            "</gpx>\n"
+        )
 
 
 def draw_result(graph, area, endpoint_xy, straight_line, max_deviation, route, filename):

@@ -381,6 +381,8 @@ def main():
         graph, area, network.node_xy[network.endpoint_nodes], straight_line, deviation, route, f"{filename}.png"
     )
     print(f"Wrote {filename}.png")
+    straightline.write_gpx(graph, route, f"{args.activity} across {args.name}", f"{filename}.gpx")
+    print(f"Wrote {filename}.gpx")
 
 
 if __name__ == "__main__":
