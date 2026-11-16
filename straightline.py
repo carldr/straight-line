@@ -147,6 +147,8 @@ def draw_result(graph, area, endpoint_xy, straight_line, max_deviation, route, f
     x, y = route.xy
     ax.plot(x, y, color="green", linewidth=1.0)
 
+    ax.text(0.01, 0.01, f"Max deviation: {max_deviation:.1f} m", transform=ax.transAxes, fontsize=14, ha="left", va="bottom")
+
     ax.set_xlim(west - width * 0.02, east + width * 0.02)
     ax.set_ylim(south - height * 0.02, north + height * 0.02)
     fig.savefig(filename, dpi=300)
