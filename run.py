@@ -13,11 +13,22 @@ import random
 import re
 import sys
 import time
+from contextlib import contextmanager
 from dataclasses import dataclass
 
 import networkx as nx
 import numpy as np
 import shapely
+from rich.console import Console
+from rich.progress import (
+    BarColumn,
+    MofNCompleteColumn,
+    Progress,
+    SpinnerColumn,
+    TextColumn,
+    TimeElapsedColumn,
+    TimeRemainingColumn,
+)
 from scipy.sparse import coo_matrix
 from scipy.sparse.csgraph import breadth_first_order
 from shapely.geometry import LineString
@@ -32,6 +43,8 @@ FINE_ENDPOINT_SPACING_METRES = 25.0
 MAX_COARSE_ENDPOINTS = 2000
 #  A pair with no known deviation bound starts its corridor at this width, and doubles it until the ends connect.
 INITIAL_CORRIDOR_WIDTH_METRES = 25.0
+
+console = Console()
 
 
 @dataclass
@@ -298,20 +311,45 @@ def endpoints_near(network, endpoint, distance, boundary_length):
     return np.flatnonzero(separation <= distance)
 
 
+@contextmanager
+def stage(running_text, done_text):
+    """Show running_text with a spinner and the elapsed time while the block runs, then done_text with the time it took.
+
+    The block receives a function that adds a detail text to the spinner line.
+    On a console that is not a terminal, only the done_text line appears.
+    """
+    started = time.monotonic()
+    if console.is_terminal:
+        with Progress(
+            SpinnerColumn(), TextColumn("{task.description}"), TimeElapsedColumn(), console=console, transient=True
+        ) as progress:
+            task = progress.add_task(running_text, total=None)
+            yield lambda detail: progress.update(task, description=f"{running_text}: {detail}")
+    else:
+        yield lambda detail: None
+    console.print(f"[green]✓[/green] {done_text} [dim]{time.monotonic() - started:.1f} s[/dim]")
+
+
 def run_search(pool, best_deviation, tasks, description):
-    """Run the tasks in the pool, print progress, and return the best (deviation, start, end)."""
+    """Run the tasks in the pool with a progress bar, and return the best (deviation, start, end)."""
     random.Random(0).shuffle(tasks)
     best = None
-    started = time.monotonic()
-    report_every = max(1, len(tasks) // 20)
-    for done, result in enumerate(pool.imap_unordered(search_from_endpoint, tasks), start=1):
-        if result is not None and (best is None or result[0] < best[0]):
-            best = result
-        if done % report_every == 0 or done == len(tasks):
-            print(
-                f"{description}: {done}/{len(tasks)} start endpoints, best deviation {best_deviation.value:.1f} m, "
-                f"{time.monotonic() - started:.0f} s"
-            )
+    with Progress(
+        TextColumn(description),
+        BarColumn(),
+        MofNCompleteColumn(),
+        TextColumn("start endpoints, best {task.fields[best]}"),
+        TimeElapsedColumn(),
+        TextColumn("<"),
+        TimeRemainingColumn(),
+        console=console,
+    ) as progress:
+        task = progress.add_task(description, total=len(tasks), best="-")
+        for result in pool.imap_unordered(search_from_endpoint, tasks):
+            if result is not None and (best is None or result[0] < best[0]):
+                best = result
+            best_text = "-" if math.isinf(best_deviation.value) else f"{best_deviation.value:.1f} m"
+            progress.update(task, advance=1, best=best_text)
     return best
 
 
@@ -319,16 +357,18 @@ def choose_area(area_argument):
     """Return the (relation id, display name) for a place name or an OSM relation id."""
     if re.fullmatch(r"[Rr]?\d+", area_argument):
         relation_id = int(area_argument.upper().removeprefix("R"))
-        return relation_id, straightline.fetch_relation_name(relation_id)
+        with stage(f"Finding the name of relation {relation_id}", f"Found the name of relation {relation_id}"):
+            return relation_id, straightline.fetch_relation_name(relation_id)
 
-    matches = straightline.search_boundaries(area_argument)
+    with stage(f"Searching Nominatim for '{area_argument}'", f"Searched Nominatim for '{area_argument}'"):
+        matches = straightline.search_boundaries(area_argument)
     if not matches:
         raise SystemExit(f"Nominatim found no boundary for '{area_argument}'.")
     if len(matches) == 1:
         return matches[0][0], matches[0][1]
 
     for number, (relation_id, display_name, kind) in enumerate(matches, start=1):
-        print(f"{number}. {display_name}  ({kind}, relation {relation_id})")
+        console.print(f"{number}. {display_name}  [dim]({kind}, relation {relation_id})[/dim]", highlight=False)
     if not sys.stdin.isatty():
         raise SystemExit("Several boundaries match. Run again with the relation id of the one you want.")
     while True:
@@ -359,18 +399,23 @@ def main():
     relation_id, display_name = choose_area(args.area)
     name = args.name or file_name_part(display_name.split(",")[0])
 
-    print(f"Loading {display_name}, relation {relation_id}")
-    area_lonlat = straightline.load_area(relation_id)
-    print(f"Loading the {args.activity} network")
-    graph = straightline.load_graph(area_lonlat, args.activity)
-    area = straightline.project_to_graph(area_lonlat, graph)
-    print(f"{len(graph.nodes)} nodes, {len(graph.edges)} edges, area {area.area / 1e6:.1f} km²")
+    with stage(f"Loading the boundary of {display_name}", f"Loaded the boundary of {display_name}, relation {relation_id}"):
+        relation_polygon = straightline.largest_polygon(straightline.fetch_relation_polygon(relation_id))
+    with stage("Removing the sea", "Removed the sea"):
+        area_lonlat = straightline.remove_sea(relation_polygon)
+    with stage(f"Downloading the {args.activity} network", f"Downloaded the {args.activity} network") as report:
+        graph = straightline.download_graph(area_lonlat, args.activity, report)
+    with stage(f"Simplifying and projecting the {args.activity} network", f"Simplified and projected the {args.activity} network"):
+        graph = straightline.prepare_graph(graph, args.activity)
+        area = straightline.project_to_graph(area_lonlat, graph)
+    console.print(f"  [dim]{len(graph.nodes)} nodes, {len(graph.edges)} edges, area {area.area / 1e6:.1f} km²[/dim]")
 
-    network, nodes, edges = build_search_network(graph, area, args.min_split)
+    with stage("Preparing the search", "Prepared the search"):
+        network, nodes, edges = build_search_network(graph, area, args.min_split)
     endpoint_count = len(network.endpoint_nodes)
     boundary_length = area.exterior.length
     coarse_spacing = boundary_length / MAX_COARSE_ENDPOINTS
-    print(f"{endpoint_count} endpoint candidates on {boundary_length / 1000:.1f} km of boundary")
+    console.print(f"  [dim]{endpoint_count} endpoint candidates on {boundary_length / 1000:.1f} km of boundary[/dim]")
 
     context = multiprocessing.get_context("spawn")
     best_deviation = context.Value("d", math.inf)
@@ -378,7 +423,7 @@ def main():
         if endpoint_count > MAX_COARSE_ENDPOINTS:
             #  For a large area, check every pair of coarse endpoints, then every pair of fine endpoints near the best pair.
             coarse = coarse_endpoints(network, coarse_spacing)
-            print(f"First pass: {len(coarse)} endpoints, one per {coarse_spacing:.0f} m")
+            console.print(f"  [dim]First pass: {len(coarse)} endpoints, one per {coarse_spacing:.0f} m[/dim]")
             tasks = [(start, coarse[index + 1 :]) for index, start in enumerate(coarse)]
             _, start, end = run_search(pool, best_deviation, tasks, "First pass")
             near_start = endpoints_near(network, start, coarse_spacing, boundary_length)
@@ -398,27 +443,28 @@ def main():
     end_node = network.endpoint_nodes[end_endpoint]
 
     #  Of the routes with the smallest deviation, take the shortest.
-    init_worker(network, best_deviation)
-    corridor_ids, _ = corridor_edges(start_node, end_node, deviation * (1 + 1e-9))
-    corridor_keys = {(edges[edge][0], edges[edge][1], edges[edge][2]) for edge in corridor_ids}
-    corridor_graph = graph.edge_subgraph(corridor_keys)
-    route_nodes = nx.shortest_path(corridor_graph, nodes[start_node], nodes[end_node], weight="length")
-    route = straightline.route_line(corridor_graph, route_nodes)
+    with stage("Finding the shortest route in the corridor", "Found the shortest route in the corridor"):
+        init_worker(network, best_deviation)
+        corridor_ids, _ = corridor_edges(start_node, end_node, deviation * (1 + 1e-9))
+        corridor_keys = {(edges[edge][0], edges[edge][1], edges[edge][2]) for edge in corridor_ids}
+        corridor_graph = graph.edge_subgraph(corridor_keys)
+        route_nodes = nx.shortest_path(corridor_graph, nodes[start_node], nodes[end_node], weight="length")
+        route = straightline.route_line(corridor_graph, route_nodes)
 
     straight_line = LineString([network.node_xy[start_node], network.node_xy[end_node]])
     split = area_split(start_endpoint, np.array([end_endpoint]))[0]
-    print()
-    print(f"Deviation: {deviation:.1f} m")
-    print(f"Straight line: {straight_line.length / 1000:.2f} km, route: {route.length / 1000:.2f} km")
-    print(f"The line splits the area {split:.0%} / {1 - split:.0%}")
-
     filename = f"{args.activity}-{name}"
-    straightline.draw_result(
-        graph, area, network.node_xy[network.endpoint_nodes], straight_line, deviation, route, f"{filename}.png"
-    )
-    print(f"Wrote {filename}.png")
-    straightline.write_gpx(graph, route, f"{args.activity} across {display_name}", f"{filename}.gpx")
-    print(f"Wrote {filename}.gpx")
+    with stage(f"Writing {filename}.png", f"Wrote {filename}.png"):
+        straightline.draw_result(
+            graph, area, network.node_xy[network.endpoint_nodes], straight_line, deviation, route, f"{filename}.png"
+        )
+    with stage(f"Writing {filename}.gpx", f"Wrote {filename}.gpx"):
+        straightline.write_gpx(graph, route, f"{args.activity} across {display_name}", f"{filename}.gpx")
+
+    console.print()
+    console.print(f"[bold]Max deviation: {deviation:.1f} m[/bold]")
+    console.print(f"Straight line: {straight_line.length / 1000:.2f} km, route: {route.length / 1000:.2f} km")
+    console.print(f"The line splits the area {split:.0%} / {1 - split:.0%}")
 
 
 if __name__ == "__main__":

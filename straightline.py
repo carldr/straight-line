@@ -3,8 +3,10 @@
 All geometry that this module returns is in the graph's UTM projection, in metres.
 """
 
-import sys
+import logging
+import re
 import subprocess
+import sys
 import xml.sax.saxutils
 
 import geopandas
@@ -33,6 +35,9 @@ ox.settings.requests_timeout = 900
 ox.settings.overpass_settings = "[out:json][timeout:{timeout}][maxsize:4000000000]"
 ox.settings.use_cache = True
 ox.settings.log_console = False
+#  osmnx sends its messages to the logging module only when log_file is on. download_graph reads them for progress.
+ox.settings.log_file = True
+ox.settings.logs_folder = "cache/logs"
 #  apply_bicycle_one_way reads these tags.
 ox.settings.useful_tags_way = [*ox.settings.useful_tags_way, "oneway:bicycle", "cycleway"]
 
@@ -103,15 +108,62 @@ def fetch_relation_polygon(relation_id):
     return outer.difference(inner)
 
 
-def load_area(relation_id):
-    """Return the land area of a relation, in longitude and latitude.
+def remove_sea(polygon_lonlat):
+    """Return the largest piece of land in a polygon, in longitude and latitude.
 
-    The area is the largest polygon of the relation, less the sea, less any islands that the sea cuts off.
+    The sea, and any islands that the sea cuts off, are not part of the result.
     """
-    relation_polygon = largest_polygon(fetch_relation_polygon(relation_id))
-    water = geopandas.read_file(WATER_POLYGONS_PATH, bbox=relation_polygon.bounds)
-    land = relation_polygon.difference(shapely.union_all(water.geometry.values))
+    water = geopandas.read_file(WATER_POLYGONS_PATH, bbox=polygon_lonlat.bounds)
+    land = polygon_lonlat.difference(shapely.union_all(water.geometry.values))
     return largest_polygon(land)
+
+
+class OverpassDownloadProgress(logging.Handler):
+    """Turn the osmnx log messages about Overpass requests into a progress text, and give it to report."""
+
+    def __init__(self, report):
+        super().__init__()
+        self.report = report
+        self.request_count = 1
+        self.requests_done = 0
+        self.requests_from_cache = 0
+        self.megabytes = 0.0
+
+    def emit(self, record):
+        message = record.getMessage()
+        if match := re.match(r"Requesting data from API in (\d+) request", message):
+            self.request_count = int(match[1])
+        elif match := re.match(r"Downloaded ([\d,.]+)kB", message):
+            self.requests_done += 1
+            self.megabytes += float(match[1].replace(",", "")) / 1000
+        elif message.startswith("Retrieved response from cache"):
+            self.requests_done += 1
+            self.requests_from_cache += 1
+        else:
+            return
+        cache_text = f", {self.requests_from_cache} from cache" if self.requests_from_cache else ""
+        if self.requests_done < self.request_count:
+            self.report(
+                f"request {self.requests_done + 1}/{self.request_count}, {self.megabytes:.1f} MB downloaded{cache_text}"
+            )
+        else:
+            self.report(f"building the graph from {self.request_count} responses, {self.megabytes:.1f} MB downloaded{cache_text}")
+
+
+def download_graph(area_lonlat, activity, report):
+    """Download the unsimplified path network for the activity inside the area.
+
+    report receives a progress text after each Overpass request.
+    """
+    handler = OverpassDownloadProgress(report)
+    osmnx_logger = logging.getLogger(ox.settings.log_name)
+    #  osmnx sets the logger level only when the logger has no handler yet, so a handler added first gets no INFO messages.
+    osmnx_logger.setLevel(min(osmnx_logger.level or logging.INFO, logging.INFO))
+    osmnx_logger.addHandler(handler)
+    try:
+        return ox.graph_from_polygon(area_lonlat, network_type=activity, truncate_by_edge=True, simplify=False)
+    finally:
+        osmnx_logger.removeHandler(handler)
 
 
 def apply_bicycle_one_way(graph):
@@ -130,16 +182,14 @@ def apply_bicycle_one_way(graph):
             graph.remove_edge(u, v, key)
 
 
-def load_graph(area_lonlat, activity):
-    """Fetch the path network for the activity inside the area, in UTM metres.
+def prepare_graph(graph, activity):
+    """Simplify a downloaded graph and project it to UTM metres.
 
-    The walk graph is undirected. The bike graph is directed, and every node in it can reach every other node.
+    The walk graph becomes undirected. The bike graph stays directed, and is cut so that every node can reach every other node.
     """
     if activity == "walk":
-        graph = ox.graph_from_polygon(area_lonlat, network_type="walk", truncate_by_edge=True)
-        return ox.convert.to_undirected(ox.project_graph(graph))
+        return ox.convert.to_undirected(ox.project_graph(ox.simplify_graph(graph)))
 
-    graph = ox.graph_from_polygon(area_lonlat, network_type="bike", truncate_by_edge=True, simplify=False)
     apply_bicycle_one_way(graph)
     graph = ox.simplify_graph(graph)
     graph = ox.truncate.largest_component(graph, strongly=True)
