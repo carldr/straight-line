@@ -466,7 +466,14 @@ def main():
     filename = f"{args.activity}-{name}"
     with stage(f"Writing {filename}.png", f"Wrote {filename}.png"):
         straightline.draw_result(
-            graph, area, network.node_xy[network.endpoint_nodes], straight_line, deviation, route, f"{filename}.png"
+            graph,
+            area,
+            display_name,
+            network.node_xy[network.endpoint_nodes],
+            straight_line,
+            deviation,
+            route,
+            f"{filename}.png",
         )
     with stage(f"Writing {filename}.gpx", f"Wrote {filename}.gpx"):
         straightline.write_gpx(graph, route, f"{args.activity} across {display_name}", f"{filename}.gpx")

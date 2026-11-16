@@ -242,8 +242,11 @@ def write_gpx(graph, route, name, filename):
         )
 
 
-def draw_result(graph, area, endpoint_xy, straight_line, max_deviation, route, filename):
-    """Draw the area, the network, the corridor, the straight line and the route to a PNG."""
+def draw_result(graph, area, area_name, endpoint_xy, straight_line, max_deviation, route, filename):
+    """Draw the area, the network, the corridor, the straight line and the route to a PNG.
+
+    The bottom left corner shows the area name and the max deviation.
+    """
     west, south, east, north = area.bounds
     width = east - west
     height = north - south
@@ -270,7 +273,15 @@ def draw_result(graph, area, endpoint_xy, straight_line, max_deviation, route, f
     x, y = route.xy
     ax.plot(x, y, color="green", linewidth=1.0)
 
-    ax.text(0.01, 0.01, f"Max deviation: {max_deviation:.1f} m", transform=ax.transAxes, fontsize=14, ha="left", va="bottom")
+    ax.text(
+        0.01,
+        0.01,
+        f"{area_name}\nMax deviation: {max_deviation:.1f} m",
+        transform=ax.transAxes,
+        fontsize=14,
+        ha="left",
+        va="bottom",
+    )
 
     ax.set_xlim(west - width * 0.02, east + width * 0.02)
     ax.set_ylim(south - height * 0.02, north + height * 0.02)
